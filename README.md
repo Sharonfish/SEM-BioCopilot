@@ -1,63 +1,78 @@
 # BioCopilot 🧬
 
-BioCopilot 是一个智能生物信息学研究助手平台，提供 **Context-Aware IDE**、**Pipeline 管理** 和 **AI 驱动的代码建议**。
+BioCopilot is an intelligent bioinformatics research assistant platform with **Context-Aware IDE**, **Pipeline Management**, and **AI-Powered Code Assistance**.
+
+> **New Feature! 🎉** AI-powered code explanation - Select any code and get instant intelligent explanations!
 
 ![BioCopilot Banner](https://img.shields.io/badge/BioCopilot-v0.1.0-blue)
 ![Next.js](https://img.shields.io/badge/Next.js-14-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-## ✨ 核心特性
+## ✨ Core Features
 
-### 🎯 智能 IDE
-- **Monaco Editor 集成** - VS Code 级别的编辑体验
-- **多文件标签管理** - 轻松切换多个文件
-- **语法高亮** - 支持 Python、R、Shell 等
-- **实时代码执行** - 即时查看运行结果
+### 🎯 Intelligent IDE
+- **Monaco Editor Integration** - VS Code-level editing experience
+- **Multi-file Tab Management** - Easily switch between multiple files
+- **Syntax Highlighting** - Support for Python, R, Shell, etc.
+- **Real-time Code Execution** - See results instantly
+- **🆕 AI Code Explanation** - Select code to get intelligent explanations
 
-### 📊 Pipeline 管理
-- **可视化工作流** - 清晰展示分析步骤
-- **状态追踪** - 实时监控每个步骤的执行状态
-- **数据流监控** - 自动追踪数据形状变化
-- **错误处理** - 快速定位和修复问题
+### 📊 Pipeline Management
+- **Visual Workflow** - Clear display of analysis steps
+- **Status Tracking** - Real-time monitoring of each step's execution status
+- **Data Flow Monitoring** - Automatic tracking of data shape changes
+- **Error Handling** - Quick location and fixing of issues
 
 ### 🤖 AI Copilot
-- **上下文感知** - 根据当前工作流阶段提供建议
-- **智能代码生成** - AI 辅助编写生物信息学代码
-- **质量控制建议** - 自动检测数据质量问题
-- **一键插入代码** - 快速应用 AI 建议
+- **Context-Aware** - Provide suggestions based on current workflow stage
+- **Intelligent Code Generation** - AI-assisted bioinformatics code writing
+- **Quality Control Suggestions** - Automatic detection of data quality issues
+- **One-Click Code Insertion** - Quick application of AI suggestions
 
-### 🎨 现代化 UI
-- **深色模式支持**
-- **响应式设计**
-- **流畅动画**
-- **直观的三栏布局**
+### 🎨 Modern UI
+- **Dark Mode Support**
+- **Responsive Design**
+- **Smooth Animations**
+- **Intuitive Three-Column Layout**
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
-### 前置要求
+### Prerequisites
 
 - Node.js 18+ 
 - npm / yarn / pnpm
 
-### 安装依赖
+### Install Dependencies
 
 ```bash
 cd /Users/yuxiaowen/Desktop/web-projects.nosync/CMU/SEM/BioCopilot
 npm install
 ```
 
-### 启动开发服务器
+### Start Development Server
 
 ```bash
 npm run dev
 ```
 
-打开浏览器访问 [http://localhost:3000](http://localhost:3000)
+Open your browser and visit [http://localhost:3000](http://localhost:3000)
 
-### 启动 IDE
+### Launch IDE
 
-点击首页的 **"启动 IDE"** 按钮，进入 BioCopilot IDE 界面。
+Click the **"Launch IDE"** button on the homepage to enter the BioCopilot IDE interface.
+
+### 🆕 Try Code Explanation
+
+1. Open any file in the IDE
+2. Select a code snippet with your mouse
+3. Click the floating "Explain" button
+4. Get AI-powered explanation instantly!
+
+**Optional**: Add your OpenAI API key in `.env.local` for full AI features:
+```bash
+OPENAI_API_KEY=sk-your-api-key-here
+```
 
 ## 📁 项目结构
 
