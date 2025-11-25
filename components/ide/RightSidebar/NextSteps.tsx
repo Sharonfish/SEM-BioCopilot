@@ -5,6 +5,7 @@
 'use client'
 
 import { Code2, Lightbulb, Sparkles } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useCopilotStore } from '@/store/copilotStore'
 import { useEditorStore } from '@/store/editorStore'
 import { Button } from '@/components/ui/Button'
@@ -12,8 +13,13 @@ import { Badge } from '@/components/ui/Badge'
 import { cn } from '@/lib/utils'
 
 export function NextSteps() {
+  const router = useRouter()
   const { suggestions, isEnabled } = useCopilotStore()
   const { activeTabId, updateTabContent, tabs } = useEditorStore()
+
+  const handleCitationNetworkClick = () => {
+    router.push('/citation-network')
+  }
 
   if (!isEnabled) {
     return (
@@ -51,6 +57,28 @@ export function NextSteps() {
         <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100">
           Next Steps
         </h3>
+      </div>
+
+      {/* Citation Network Card - Always shown */}
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+        <div
+          onClick={handleCitationNetworkClick}
+          className="next-step-card"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Enter' && handleCitationNetworkClick()}
+        >
+          <div className="step-icon">🔗</div>
+          <div className="step-content">
+            <div className="step-header">
+              <h4>Explore Literature Network</h4>
+              <span className="badge-new">NEW</span>
+            </div>
+            <p className="step-subtitle">可视化相关文献的引用关系网络</p>
+            <p className="step-description">Visualize citation relationships between related papers in your research area</p>
+          </div>
+          <div className="step-arrow">→</div>
+        </div>
       </div>
 
       {suggestions.length === 0 ? (

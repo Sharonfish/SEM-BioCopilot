@@ -5,6 +5,7 @@
 'use client'
 
 import { Play, Square, Search, Settings } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Tooltip } from '@/components/ui/Tooltip'
@@ -17,6 +18,12 @@ interface TopBarProps {
 }
 
 export function TopBar({ projectName = 'BioCopilot', onRun, onStop, isRunning }: TopBarProps) {
+  const router = useRouter()
+
+  const handleCitationNetworkClick = () => {
+    router.push('/citation-network')
+  }
+
   return (
     <div className="h-14 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4">
       {/* Left - Logo and Project Name */}
@@ -44,6 +51,27 @@ export function TopBar({ projectName = 'BioCopilot', onRun, onStop, isRunning }:
                 Run
               </Button>
             )}
+          </Tooltip>
+          
+          {/* Citation Network Button */}
+          <Tooltip content="Citation Network Visualization">
+            <button
+              onClick={handleCitationNetworkClick}
+              className="citation-network-btn"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="3" />
+                <circle cx="6" cy="6" r="2" />
+                <circle cx="18" cy="6" r="2" />
+                <circle cx="6" cy="18" r="2" />
+                <circle cx="18" cy="18" r="2" />
+                <line x1="12" y1="9" x2="6" y2="8" />
+                <line x1="12" y1="9" x2="18" y2="8" />
+                <line x1="12" y1="15" x2="6" y2="16" />
+                <line x1="12" y1="15" x2="18" y2="16" />
+              </svg>
+              <span>Citation Network</span>
+            </button>
           </Tooltip>
         </div>
       </div>

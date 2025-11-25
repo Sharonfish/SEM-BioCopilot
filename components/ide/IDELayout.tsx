@@ -4,12 +4,14 @@
 
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { TopBar } from './TopBar'
 import { PipelineSteps } from './LeftSidebar/PipelineSteps'
 import { TabBar } from './Editor/TabBar'
 import { CodeEditor } from './Editor/CodeEditor'
 import { CopilotPanel } from './RightSidebar/CopilotPanel'
+import { CitationNetworkLauncher } from '@/components/QuickActions/CitationNetworkLauncher'
 import { usePipelineStore } from '@/store/pipelineStore'
 import { useEditorStore } from '@/store/editorStore'
 import { apiClient } from '@/lib/api-client'
@@ -19,11 +21,25 @@ interface IDELayoutProps {
 }
 
 export function IDELayout({ projectName }: IDELayoutProps) {
+  const router = useRouter()
   const [isRunning, setIsRunning] = useState(false)
   const stopRequested = useRef(false)
   
   const { config, updateStepStatus, setCurrentStep, updateProgress, setStepError, updateStepOutput } = usePipelineStore()
   const { tabs } = useEditorStore()
+
+  // Keyboard shortcut: Ctrl+Shift+C to open Citation Network
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+        e.preventDefault()
+        router.push('/citation-network')
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyPress)
+    return () => window.removeEventListener('keydown', handleKeyPress)
+  }, [router])
 
   const handleRun = async () => {
     if (!config) return
@@ -134,6 +150,9 @@ export function IDELayout({ projectName }: IDELayoutProps) {
           <CopilotPanel />
         </div>
       </div>
+
+      {/* Floating Citation Network Launcher */}
+      <CitationNetworkLauncher />
     </div>
   )
 }
