@@ -7,13 +7,16 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { TopBar } from './TopBar'
-import { PipelineSteps } from './LeftSidebar/PipelineSteps'
+import { LeftSidebarTabs } from './LeftSidebar/LeftSidebarTabs'
 import { TabBar } from './Editor/TabBar'
 import { CodeEditor } from './Editor/CodeEditor'
 import { CopilotPanel } from './RightSidebar/CopilotPanel'
 import { CitationNetworkLauncher } from '@/components/QuickActions/CitationNetworkLauncher'
+import { OutputPanel } from './OutputPanel'
 import { usePipelineStore } from '@/store/pipelineStore'
 import { useEditorStore } from '@/store/editorStore'
+import { useEditorSelectionStore } from '@/store/editorSelectionStore'
+import { useOutputStore } from '@/store/outputStore'
 import { apiClient } from '@/lib/api-client'
 
 interface IDELayoutProps {
@@ -27,6 +30,8 @@ export function IDELayout({ projectName }: IDELayoutProps) {
   
   const { config, updateStepStatus, setCurrentStep, updateProgress, setStepError, updateStepOutput } = usePipelineStore()
   const { tabs } = useEditorStore()
+  const { selection, hasSelection } = useEditorSelectionStore()
+  const { addLog, setExpanded } = useOutputStore()
 
   // Keyboard shortcut: Ctrl+Shift+C to open Citation Network
   useEffect(() => {
@@ -41,11 +46,18 @@ export function IDELayout({ projectName }: IDELayoutProps) {
     return () => window.removeEventListener('keydown', handleKeyPress)
   }, [router])
 
-  const handleRun = async () => {
+  const handleRunByStep = async () => {
     if (!config) return
     
     setIsRunning(true)
     stopRequested.current = false
+    setExpanded(true) // Auto-expand output panel when running
+
+    // Clear previous output and add start message
+    addLog({
+      type: 'info',
+      content: `Starting pipeline execution: ${config.name}`,
+    })
 
     try {
       // Find the first uncompleted step
@@ -69,6 +81,13 @@ export function IDELayout({ projectName }: IDELayoutProps) {
         setCurrentStep(i)
         updateStepStatus(step.id, 'running')
 
+        addLog({
+          type: 'info',
+          content: `[${i + 1}/${config.steps.length}] Executing step: ${step.name}`,
+          stepId: step.id,
+          stepName: step.name,
+        })
+
         try {
           // Get current file content
           const currentTab = tabs.find(tab => tab.path === step.file)
@@ -87,18 +106,68 @@ export function IDELayout({ projectName }: IDELayoutProps) {
             // Execution successful
             updateStepStatus(step.id, 'completed')
             
+            // Add stdout output
+            if (result.output?.stdout) {
+              addLog({
+                type: 'stdout',
+                content: result.output.stdout,
+                stepId: step.id,
+                stepName: step.name,
+              })
+            }
+
+            // Add stderr output if present
+            if (result.output?.stderr) {
+              addLog({
+                type: 'stderr',
+                content: result.output.stderr,
+                stepId: step.id,
+                stepName: step.name,
+              })
+            }
+
+            // Log execution time
+            if (result.executionTime) {
+              addLog({
+                type: 'info',
+                content: `✓ Step completed in ${result.executionTime.toFixed(2)}s`,
+                stepId: step.id,
+                stepName: step.name,
+              })
+            }
+            
             // Update step output if data shape info available
             if (result.dataShape) {
               updateStepOutput(step.id, result.dataShape)
+              addLog({
+                type: 'info',
+                content: `Data shape: ${result.dataShape.rows.toLocaleString()} rows × ${result.dataShape.cols.toLocaleString()} columns`,
+                stepId: step.id,
+                stepName: step.name,
+              })
             }
           } else {
             // Execution failed
-            setStepError(step.id, result.error || 'Execution failed')
+            const errorMsg = result.error || 'Execution failed'
+            setStepError(step.id, errorMsg)
+            addLog({
+              type: 'error',
+              content: `✗ Error: ${errorMsg}`,
+              stepId: step.id,
+              stepName: step.name,
+            })
             break
           }
         } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error'
           console.error(`Step ${step.name} execution error:`, error)
-          setStepError(step.id, error instanceof Error ? error.message : 'Unknown error')
+          setStepError(step.id, errorMsg)
+          addLog({
+            type: 'error',
+            content: `✗ Execution error: ${errorMsg}`,
+            stepId: step.id,
+            stepName: step.name,
+          })
           break
         }
 
@@ -110,6 +179,115 @@ export function IDELayout({ projectName }: IDELayoutProps) {
         // Delay between steps
         await new Promise(resolve => setTimeout(resolve, 800))
       }
+
+      // Final status
+      if (!stopRequested.current) {
+        addLog({
+          type: 'info',
+          content: 'Pipeline execution completed successfully',
+        })
+      } else {
+        addLog({
+          type: 'info',
+          content: 'Pipeline execution stopped by user',
+        })
+      }
+    } finally {
+      setIsRunning(false)
+      stopRequested.current = false
+    }
+  }
+
+  const handleRunHighlighted = async () => {
+    if (!selection?.text || !selection.text.trim()) {
+      addLog({
+        type: 'error',
+        content: 'No code selected. Please select a code block to run.',
+      })
+      setExpanded(true)
+      return
+    }
+
+    setIsRunning(true)
+    stopRequested.current = false
+    setExpanded(true)
+
+    const selectedCode = selection.text.trim()
+    const activeTab = tabs.find(tab => tab.isActive)
+
+    addLog({
+      type: 'info',
+      content: `Executing selected code block (lines ${selection.startLine}–${selection.endLine})...`,
+    })
+
+    try {
+      const result = await apiClient.executeCode({
+        code: selectedCode,
+        language: activeTab?.language || 'python',
+        context: {
+          type: 'highlighted',
+          fileName: activeTab?.name || 'unknown',
+          startLine: selection.startLine,
+          endLine: selection.endLine,
+        },
+      })
+
+      if (stopRequested.current) return
+
+      if (result.success) {
+            // Check if this was a package installation
+            if (result.message && result.message.includes('installed')) {
+              addLog({
+                type: 'info',
+                content: `✓ ${result.message}`,
+              })
+            }
+
+            // Add stdout output
+            if (result.output?.stdout) {
+              addLog({
+                type: 'stdout',
+                content: result.output.stdout,
+              })
+            }
+
+            // Add stderr output if present
+            if (result.output?.stderr) {
+              addLog({
+                type: 'stderr',
+                content: result.output.stderr,
+              })
+            }
+
+            // Log execution time
+            if (result.executionTime && !result.message?.includes('installed')) {
+              addLog({
+                type: 'info',
+                content: `✓ Code block executed in ${result.executionTime.toFixed(2)}s`,
+              })
+            }
+
+        // Log data shape if available
+        if (result.dataShape) {
+          addLog({
+            type: 'info',
+            content: `Data shape: ${result.dataShape.rows.toLocaleString()} rows × ${result.dataShape.cols.toLocaleString()} columns`,
+          })
+        }
+      } else {
+        const errorMsg = result.error || 'Execution failed'
+        addLog({
+          type: 'error',
+          content: `✗ Error: ${errorMsg}`,
+        })
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      console.error('Highlighted code execution error:', error)
+      addLog({
+        type: 'error',
+        content: `✗ Execution error: ${errorMsg}`,
+      })
     } finally {
       setIsRunning(false)
       stopRequested.current = false
@@ -127,16 +305,18 @@ export function IDELayout({ projectName }: IDELayoutProps) {
       {/* Top Toolbar */}
       <TopBar
         projectName={projectName}
-        onRun={handleRun}
+        onRunByStep={handleRunByStep}
+        onRunHighlighted={handleRunHighlighted}
         onStop={handleStop}
         isRunning={isRunning}
+        hasSelection={hasSelection()}
       />
 
       {/* Main Content Area - Three Column Layout */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar - Pipeline Steps */}
+        {/* Left Sidebar - Tabs (Pipeline Steps / Database Import) */}
         <div className="w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
-          <PipelineSteps />
+          <LeftSidebarTabs />
         </div>
 
         {/* Center Area - Editor */}
@@ -150,6 +330,9 @@ export function IDELayout({ projectName }: IDELayoutProps) {
           <CopilotPanel />
         </div>
       </div>
+
+      {/* Output Panel */}
+      <OutputPanel />
 
       {/* Floating Citation Network Launcher */}
       <CitationNetworkLauncher />

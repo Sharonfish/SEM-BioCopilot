@@ -4,25 +4,50 @@
 
 'use client'
 
-import { Play, Square, Search, Settings } from 'lucide-react'
+import { Play, Square, Search, Settings, ChevronDown, GitBranch, Code } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Tooltip } from '@/components/ui/Tooltip'
+import { Dropdown, DropdownItem } from '@/components/ui/Dropdown'
 
 interface TopBarProps {
   projectName?: string
-  onRun?: () => void
+  onRunByStep?: () => void
+  onRunHighlighted?: () => void
   onStop?: () => void
   isRunning?: boolean
+  hasSelection?: boolean
 }
 
-export function TopBar({ projectName = 'BioCopilot', onRun, onStop, isRunning }: TopBarProps) {
+export function TopBar({ 
+  projectName = 'BioCopilot', 
+  onRunByStep, 
+  onRunHighlighted,
+  onStop, 
+  isRunning,
+  hasSelection = false,
+}: TopBarProps) {
   const router = useRouter()
 
   const handleCitationNetworkClick = () => {
     router.push('/citation-network')
   }
+
+  const runMenuItems: DropdownItem[] = [
+    {
+      label: 'Run by Step',
+      icon: <GitBranch className="h-4 w-4" />,
+      onClick: () => onRunByStep?.(),
+      disabled: isRunning,
+    },
+    {
+      label: 'Run Highlighted Code Block',
+      icon: <Code className="h-4 w-4" />,
+      onClick: () => onRunHighlighted?.(),
+      disabled: isRunning || !hasSelection,
+    },
+  ]
 
   return (
     <div className="h-14 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4">
@@ -39,19 +64,28 @@ export function TopBar({ projectName = 'BioCopilot', onRun, onStop, isRunning }:
         
         {/* Run Control Buttons */}
         <div className="flex items-center gap-2">
-          <Tooltip content={isRunning ? 'Stop Execution' : 'Run Code'}>
-            {isRunning ? (
+          {isRunning ? (
+            <Tooltip content="Stop Execution">
               <Button size="sm" variant="danger" onClick={onStop}>
                 <Square className="h-4 w-4 mr-2" />
                 Stop
               </Button>
-            ) : (
-              <Button size="sm" onClick={onRun}>
-                <Play className="h-4 w-4 mr-2" />
-                Run
-              </Button>
-            )}
-          </Tooltip>
+            </Tooltip>
+          ) : (
+            <Dropdown
+              trigger={
+                <Tooltip content="Run Code">
+                  <Button size="sm">
+                    <Play className="h-4 w-4 mr-2" />
+                    Run
+                    <ChevronDown className="h-4 w-4 ml-2" />
+                  </Button>
+                </Tooltip>
+              }
+              items={runMenuItems}
+              align="left"
+            />
+          )}
           
           {/* Citation Network Button */}
           <Tooltip content="Citation Network Visualization">

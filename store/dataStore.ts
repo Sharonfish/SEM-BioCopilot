@@ -18,6 +18,7 @@ export interface ParsedData {
   id: string
   fileName: string
   fileType: 'csv' | 'tsv' | 'excel' | 'json'
+  filePath?: string // Server-side file path for code generation
   columns: ColumnInfo[]
   rows: any[][]
   totalRows: number

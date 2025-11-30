@@ -14,6 +14,8 @@ interface EditorStore {
   closeTab: (tabId: string) => void
   switchTab: (tabId: string) => void
   updateTabContent: (tabId: string, content: string) => void
+  insertCodeAtCursor: (code: string) => void
+  appendCode: (code: string) => void
   saveTab: (tabId: string) => void
   markDirty: (tabId: string, isDirty: boolean) => void
 }
@@ -77,6 +79,30 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       tabs: get().tabs.map(tab =>
         tab.id === tabId
           ? { ...tab, content, isDirty: true }
+          : tab
+      ),
+    })
+  },
+
+  insertCodeAtCursor: (code) => {
+    // This will be handled by the CodeEditor component
+    // We'll use a custom event to trigger insertion
+    window.dispatchEvent(new CustomEvent('editor:insertCode', { detail: { code } }))
+  },
+
+  appendCode: (code) => {
+    const activeTabId = get().activeTabId
+    if (!activeTabId) return
+
+    const tabs = get().tabs
+    const activeTab = tabs.find(tab => tab.id === activeTabId)
+    if (!activeTab) return
+
+    const newContent = activeTab.content + '\n\n' + code
+    set({
+      tabs: tabs.map(tab =>
+        tab.id === activeTabId
+          ? { ...tab, content: newContent, isDirty: true }
           : tab
       ),
     })

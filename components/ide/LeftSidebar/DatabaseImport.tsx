@@ -5,9 +5,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Database, FileText, X, ChevronDown, ChevronRight, AlertCircle } from 'lucide-react'
+import { Database, FileText, X, ChevronDown, ChevronRight, AlertCircle, Code, Copy } from 'lucide-react'
 import { FileUpload, FileType } from '@/components/ui/FileUpload'
 import { useDataStore, ParsedData } from '@/store/dataStore'
+import { useEditorStore } from '@/store/editorStore'
 import { parseCSV, parseJSON, parseExcel, analyzeColumns } from '@/lib/fileParser'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -15,6 +16,7 @@ import { cn } from '@/lib/utils'
 
 export function DatabaseImport() {
   const { uploadedFiles, currentFile, addFile, removeFile, setCurrentFile, loading, setLoading, setError } = useDataStore()
+  const { appendCode } = useEditorStore()
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
   const [previewExpanded, setPreviewExpanded] = useState(false)
 
@@ -23,6 +25,23 @@ export function DatabaseImport() {
     setError(null)
 
     try {
+      // First, upload file to server to get file path
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const uploadResponse = await fetch('/api/upload-data', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload file to server')
+      }
+
+      const uploadResult = await uploadResponse.json()
+      const filePath = uploadResult.filePath
+
+      // Parse file for preview
       const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase()
       let fileType: 'csv' | 'tsv' | 'excel' | 'json'
       let headers: string[]
@@ -64,6 +83,7 @@ export function DatabaseImport() {
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         fileName: file.name,
         fileType,
+        filePath, // Store server-side file path
         columns,
         rows,
         totalRows: rows.length,
@@ -81,6 +101,39 @@ export function DatabaseImport() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const generateCode = (file: ParsedData): string => {
+    const variableName = file.fileName
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .replace(/^([0-9])/, '_$1')
+      .toLowerCase()
+      .replace(/\.[^.]+$/, '') // Remove extension
+      .substring(0, 30) || 'dataset'
+
+    let code = ''
+
+    switch (file.fileType) {
+      case 'csv':
+        code = `import pandas as pd\n\n# Load ${file.fileName}\n${variableName} = pd.read_csv('${file.filePath}')\n\n# Display basic info\nprint(f"Dataset shape: {${variableName}.shape}")\nprint(f"Columns: {list(${variableName}.columns)}")\nprint(${variableName}.head())`
+        break
+      case 'tsv':
+        code = `import pandas as pd\n\n# Load ${file.fileName}\n${variableName} = pd.read_csv('${file.filePath}', sep='\\t')\n\n# Display basic info\nprint(f"Dataset shape: {${variableName}.shape}")\nprint(f"Columns: {list(${variableName}.columns)}")\nprint(${variableName}.head())`
+        break
+      case 'excel':
+        code = `import pandas as pd\n\n# Load ${file.fileName}\n${variableName} = pd.read_excel('${file.filePath}')\n\n# Display basic info\nprint(f"Dataset shape: {${variableName}.shape}")\nprint(f"Columns: {list(${variableName}.columns)}")\nprint(${variableName}.head())`
+        break
+      case 'json':
+        code = `import pandas as pd\n\n# Load ${file.fileName}\n${variableName} = pd.read_json('${file.filePath}')\n\n# Display basic info\nprint(f"Dataset shape: {${variableName}.shape}")\nprint(f"Columns: {list(${variableName}.columns)}")\nprint(${variableName}.head())`
+        break
+    }
+
+    return code
+  }
+
+  const handleInsertCode = (file: ParsedData) => {
+    const code = generateCode(file)
+    appendCode(code)
   }
 
   const toggleFileExpanded = (fileId: string) => {
@@ -199,6 +252,34 @@ export function DatabaseImport() {
                   {/* Expanded Content */}
                   {isExpanded && (
                     <div className="px-3 pb-3 space-y-3">
+                      {/* Insert Code Button */}
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="flex-1 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleInsertCode(file)
+                          }}
+                        >
+                          <Code className="h-3 w-3 mr-1.5" />
+                          Insert Code
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            const code = generateCode(file)
+                            navigator.clipboard.writeText(code)
+                          }}
+                          title="Copy code to clipboard"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+
                       {/* Columns Info */}
                       <div>
                         <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">

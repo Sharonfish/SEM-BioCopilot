@@ -69,6 +69,22 @@ class APIClient {
 
     return response.json()
   }
+
+  async installPackage(packageName: string, version?: string): Promise<{ success: boolean; error?: string; output?: any; message?: string }> {
+    const response = await fetch(`${this.baseURL}/install-package`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ packageName, version }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to install package: ${response.statusText}`)
+    }
+
+    return response.json()
+  }
 }
 
 export const apiClient = new APIClient()

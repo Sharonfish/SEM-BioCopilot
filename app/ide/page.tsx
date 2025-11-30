@@ -21,14 +21,14 @@ export default function IDEPage() {
     setPipeline({
       id: 'cancer-genomics-pipeline',
       name: 'Cancer Genomics Pipeline',
-      description: '癌症基因组学数据分析流程',
+      description: 'Cancer genomics data analysis pipeline',
       currentStepIndex: 0,
       progress: 0,
       steps: [
         {
           id: 'load-data',
           name: 'Load Data',
-          description: '从 CSV 文件加载基因表达数据',
+          description: 'Load gene expression data from CSV file',
           file: 'load_data.py',
           status: 'pending',
           dependencies: [],
@@ -36,7 +36,7 @@ export default function IDEPage() {
         {
           id: 'gene-mapping',
           name: 'Gene Mapping',
-          description: '基因映射和注释',
+          description: 'Gene mapping and annotation',
           file: 'gene_mapping.py',
           status: 'pending',
           dependencies: ['load-data'],
@@ -44,7 +44,7 @@ export default function IDEPage() {
         {
           id: 'preprocess',
           name: 'Preprocess',
-          description: '数据预处理和标准化',
+          description: 'Data preprocessing and standardization',
           file: 'preprocess.py',
           status: 'pending',
           dependencies: ['gene-mapping'],
@@ -52,7 +52,7 @@ export default function IDEPage() {
         {
           id: 'train-model',
           name: 'Train Model',
-          description: '训练机器学习模型',
+          description: 'Train machine learning model',
           file: 'train.py',
           status: 'pending',
           dependencies: ['preprocess'],
@@ -60,7 +60,7 @@ export default function IDEPage() {
         {
           id: 'evaluate',
           name: 'Evaluate',
-          description: '模型评估',
+          description: 'Model evaluation',
           file: 'evaluate.py',
           status: 'pending',
           dependencies: ['train-model'],
@@ -169,6 +169,6 @@ counts_per_million = (df / df.sum()) * 1e6`,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  return <IDELayout projectName="cancer-genomics-pipeline" />
+  return <IDELayout projectName="BioCopilot" />
 }
 

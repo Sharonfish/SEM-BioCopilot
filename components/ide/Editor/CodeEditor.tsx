@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Editor, { Monaco } from '@monaco-editor/react'
 import { useEditorStore } from '@/store/editorStore'
+import { useEditorSelectionStore } from '@/store/editorSelectionStore'
 import { editor } from 'monaco-editor'
 import { ExplainButton } from './ExplainButton'
 import { ExplanationPanel } from './ExplanationPanel'
@@ -21,6 +22,7 @@ interface Selection {
 
 export function CodeEditor() {
   const { tabs, activeTabId, updateTabContent } = useEditorStore()
+  const { setSelection: setGlobalSelection } = useEditorSelectionStore()
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   
@@ -93,6 +95,13 @@ export function CodeEditor() {
           endColumn: e.selection.endColumn,
         }
         setSelection(selectionData)
+        
+        // Sync to global store for TopBar access
+        setGlobalSelection({
+          text: selectedText,
+          startLine: e.selection.startLineNumber,
+          endLine: e.selection.endLineNumber,
+        })
 
         // Calculate button position
         const position = editorInstance.getScrolledVisiblePosition({
@@ -110,6 +119,8 @@ export function CodeEditor() {
       } else {
         setSelection(null)
         setButtonPosition(null)
+        // Clear global selection
+        setGlobalSelection({ text: null, startLine: null, endLine: null })
       }
     })
   }
@@ -171,7 +182,7 @@ export function CodeEditor() {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center text-gray-500">
-          <p className="text-lg mb-2">Welcome to BioCopilot IDE</p>
+          <p className="text-lg mb-2">Welcome to bioCopilot IDE</p>
           <p className="text-sm">Open a file to start editing</p>
         </div>
       </div>
