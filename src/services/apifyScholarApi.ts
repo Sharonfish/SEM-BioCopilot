@@ -74,7 +74,7 @@ interface ApifyDatasetItem {
 // ============================================================================
 
 const APIFY_BASE_URL = 'https://api.apify.com/v2';
-const ACTOR_ID = 'scrapestorm/google-scholar-scraper-cheap-affordable-rental';
+const ACTOR_ID = 'scrapestorm~google-scholar-scraper-cheap-affordable-rental';
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000; // 1 second
 const POLL_INTERVAL = 2000; // 2 seconds

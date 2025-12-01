@@ -71,7 +71,8 @@ function getLayoutedElements(graph: NetworkGraph) {
 
   // Add nodes
   graph.nodes.forEach((node) => {
-    const size = Math.max(30, Math.min(80, Math.log10(node.paper.citationCount + 1) * 20));
+    const citationCount = node.paper?.citationCount || 0;
+    const size = Math.max(30, Math.min(80, Math.log10(citationCount + 1) * 20));
     dagreGraph.setNode(node.id, { width: size, height: size });
   });
 

@@ -96,9 +96,15 @@ export const CustomNode = memo(({ data }: NodeProps<CustomNodeData>) => {
   const { node, onHover } = data;
   const { paper, isOrigin, isSelected } = node;
 
-  const size = getNodeSize(paper.citationCount);
-  const color = getNodeColor(paper.year, isOrigin || false, isSelected || false);
-  const authors = getShortAuthors(paper.authors);
+  // Safety check: if paper is undefined, return null
+  if (!paper) {
+    console.error('CustomNode: paper is undefined for node', node);
+    return null;
+  }
+
+  const size = getNodeSize(paper.citationCount || 0);
+  const color = getNodeColor(paper.year || 2000, isOrigin || false, isSelected || false);
+  const authors = getShortAuthors(paper.authors || []);
 
   return (
     <div
@@ -122,14 +128,14 @@ export const CustomNode = memo(({ data }: NodeProps<CustomNodeData>) => {
           height: size,
           backgroundColor: color,
         }}
-        title={`${paper.title}\n${paper.authors.join(', ')}\n${paper.year} • ${paper.citationCount} citations`}
+        title={`${paper.title || 'Unknown'}\n${(paper.authors || []).join(', ')}\n${paper.year || 'N/A'} • ${paper.citationCount || 0} citations`}
       >
         {/* Show citation count inside larger nodes */}
         {size > 50 && (
           <div className="node-citation-count">
-            {paper.citationCount > 1000
-              ? `${(paper.citationCount / 1000).toFixed(1)}k`
-              : paper.citationCount}
+            {(paper.citationCount || 0) > 1000
+              ? `${((paper.citationCount || 0) / 1000).toFixed(1)}k`
+              : (paper.citationCount || 0)}
           </div>
         )}
       </div>
@@ -137,15 +143,15 @@ export const CustomNode = memo(({ data }: NodeProps<CustomNodeData>) => {
       {/* Node label */}
       <div className="node-label">
         <div className="node-label-authors">{authors}</div>
-        <div className="node-label-year">{paper.year}</div>
+        <div className="node-label-year">{paper.year || 'N/A'}</div>
       </div>
 
       {/* Hover tooltip */}
       <div className="node-tooltip">
-        <div className="tooltip-title">{paper.title}</div>
-        <div className="tooltip-authors">{paper.authors.join(', ')}</div>
+        <div className="tooltip-title">{paper.title || 'Unknown'}</div>
+        <div className="tooltip-authors">{(paper.authors || []).join(', ')}</div>
         <div className="tooltip-meta">
-          {paper.year} • {paper.citationCount} citations • {paper.source}
+          {paper.year || 'N/A'} • {paper.citationCount || 0} citations • {paper.source || 'Unknown'}
         </div>
       </div>
     </div>
