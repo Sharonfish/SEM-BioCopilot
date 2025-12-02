@@ -50,12 +50,69 @@ function CitationNetworkPageContent() {
   const [sortBy, setSortBy] = useState<'similarity' | 'citations' | 'year'>('similarity');
   const [showSemanticEdges, setShowSemanticEdges] = useState(false);
 
+  // Real-time search dropdown state
+  const [searchSuggestions, setSearchSuggestions] = useState<Paper[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+
   // Perform search on mount if initial query exists
   useEffect(() => {
     if (initialQuery && initialQuery.trim()) {
       performSearch(initialQuery);
     }
   }, [initialQuery]);
+
+  // Debounced real-time search for suggestions
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchInput.trim().length >= 2) {
+        fetchSearchSuggestions(searchInput.trim());
+      } else {
+        setSearchSuggestions([]);
+        setShowSuggestions(false);
+      }
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  /**
+   * Fetches search suggestions in real-time
+   */
+  const fetchSearchSuggestions = async (query: string) => {
+    setIsLoadingSuggestions(true);
+
+    try {
+      const response = await fetch('/api/citation/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: query,
+          maxResults: 8, // Limit to 8 suggestions
+          sortBy: 'relevance',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success && data.papers) {
+        setSearchSuggestions(data.papers);
+        setShowSuggestions(true);
+      } else {
+        setSearchSuggestions([]);
+        setShowSuggestions(false);
+      }
+    } catch (error) {
+      console.error('[Real-time Search] Error:', error);
+      setSearchSuggestions([]);
+      setShowSuggestions(false);
+    } finally {
+      setIsLoadingSuggestions(false);
+    }
+  };
 
   /**
    * Performs real-time citation search
@@ -128,7 +185,48 @@ function CitationNetworkPageContent() {
    */
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    setShowSuggestions(false);
     performSearch(searchInput);
+  };
+
+  /**
+   * Handles selecting a suggestion from dropdown
+   */
+  const handleSelectSuggestion = (paper: Paper) => {
+    setSearchInput(paper.title);
+    setShowSuggestions(false);
+    setSelectedSuggestionIndex(-1);
+    performSearch(paper.title);
+  };
+
+  /**
+   * Handles keyboard navigation in suggestions dropdown
+   */
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!showSuggestions || searchSuggestions.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedSuggestionIndex((prev) =>
+          prev < searchSuggestions.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedSuggestionIndex((prev) => (prev > 0 ? prev - 1 : -1));
+        break;
+      case 'Enter':
+        if (selectedSuggestionIndex >= 0) {
+          e.preventDefault();
+          handleSelectSuggestion(searchSuggestions[selectedSuggestionIndex]);
+        }
+        break;
+      case 'Escape':
+        setShowSuggestions(false);
+        setSelectedSuggestionIndex(-1);
+        break;
+    }
   };
 
   /**
@@ -340,19 +438,31 @@ function CitationNetworkPageContent() {
                 placeholder="Search papers (e.g., CRISPR gene editing)..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onFocus={() => {
+                  if (searchSuggestions.length > 0) {
+                    setShowSuggestions(true);
+                  }
+                }}
+                onBlur={() => {
+                  // Delay to allow clicking on suggestions
+                  setTimeout(() => setShowSuggestions(false), 200);
+                }}
                 className="search-input"
                 disabled={isSearching}
                 style={{
-                  width: '350px',
+                  width: '450px',
                   opacity: isSearching ? 0.7 : 1,
-                  borderColor: isSearching ? '#2196F3' : undefined,
-                  borderWidth: isSearching ? '2px' : undefined,
-                  boxShadow: isSearching ? '0 0 0 3px rgba(33, 150, 243, 0.1)' : undefined,
+                  borderColor: showSuggestions && searchSuggestions.length > 0 ? '#2196F3' : undefined,
+                  borderWidth: showSuggestions && searchSuggestions.length > 0 ? '2px' : undefined,
+                  boxShadow: showSuggestions && searchSuggestions.length > 0
+                    ? '0 0 0 3px rgba(33, 150, 243, 0.1)'
+                    : undefined,
                   transition: 'all 0.3s ease',
-                  paddingRight: isSearching ? '140px' : undefined
+                  paddingRight: isSearching || isLoadingSuggestions ? '140px' : undefined
                 }}
               />
-              {isSearching && (
+              {(isSearching || isLoadingSuggestions) && (
                 <div style={{
                   position: 'absolute',
                   right: '12px',
@@ -370,7 +480,148 @@ function CitationNetworkPageContent() {
                     display: 'inline-block',
                     fontSize: '18px'
                   }}>⟳</span>
-                  <span>Searching...</span>
+                  <span>{isSearching ? 'Searching...' : 'Loading...'}</span>
+                </div>
+              )}
+
+              {/* Real-time Search Suggestions Dropdown */}
+              {showSuggestions && searchSuggestions.length > 0 && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  marginTop: '8px',
+                  background: 'white',
+                  border: '2px solid #2196F3',
+                  borderRadius: '8px',
+                  boxShadow: '0 8px 24px rgba(33, 150, 243, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1)',
+                  maxHeight: '500px',
+                  overflowY: 'auto',
+                  zIndex: 1000,
+                  animation: 'slideDown 0.2s ease-out'
+                }}>
+                  {/* Dropdown Header */}
+                  <div style={{
+                    padding: '12px 16px',
+                    borderBottom: '1px solid #e0e0e0',
+                    background: '#f0f9ff',
+                    borderRadius: '6px 6px 0 0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2196F3" strokeWidth="2">
+                      <circle cx="11" cy="11" r="8"/>
+                      <path d="m21 21-4.35-4.35"/>
+                    </svg>
+                    <span style={{
+                      fontSize: '13px',
+                      fontWeight: '600',
+                      color: '#1976D2'
+                    }}>
+                      Top Results for &quot;{searchInput}&quot;
+                    </span>
+                  </div>
+
+                  {/* Suggestions List */}
+                  <div>
+                    {searchSuggestions.map((paper, index) => (
+                      <div
+                        key={paper.id}
+                        onClick={() => handleSelectSuggestion(paper)}
+                        style={{
+                          padding: '12px 16px',
+                          borderBottom: index < searchSuggestions.length - 1 ? '1px solid #f0f0f0' : 'none',
+                          cursor: 'pointer',
+                          background: index === selectedSuggestionIndex ? '#f0f9ff' : 'white',
+                          transition: 'all 0.15s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#f0f9ff';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (index !== selectedSuggestionIndex) {
+                            e.currentTarget.style.background = 'white';
+                          }
+                        }}
+                      >
+                        {/* Paper Title */}
+                        <div style={{
+                          fontSize: '14px',
+                          fontWeight: '600',
+                          color: '#1976D2',
+                          marginBottom: '6px',
+                          lineHeight: '1.4',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden'
+                        }}>
+                          {paper.title}
+                        </div>
+
+                        {/* Authors */}
+                        <div style={{
+                          fontSize: '12px',
+                          color: '#666',
+                          marginBottom: '6px'
+                        }}>
+                          {formatAuthors(paper.authors)}
+                        </div>
+
+                        {/* Meta Info */}
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                          fontSize: '12px',
+                          color: '#999'
+                        }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                              <line x1="16" y1="2" x2="16" y2="6" />
+                              <line x1="8" y1="2" x2="8" y2="6" />
+                              <line x1="3" y1="10" x2="21" y2="10" />
+                            </svg>
+                            {paper.year}
+                          </span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                              <polyline points="14 2 14 8 20 8" />
+                            </svg>
+                            {paper.citationCount.toLocaleString()} citations
+                          </span>
+                          {paper.venue && (
+                            <span style={{
+                              background: '#e3f2fd',
+                              padding: '2px 8px',
+                              borderRadius: '10px',
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              color: '#1976D2'
+                            }}>
+                              {paper.venue.length > 30 ? paper.venue.substring(0, 30) + '...' : paper.venue}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Footer hint */}
+                  <div style={{
+                    padding: '8px 16px',
+                    background: '#fafafa',
+                    borderRadius: '0 0 6px 6px',
+                    fontSize: '11px',
+                    color: '#999',
+                    textAlign: 'center'
+                  }}>
+                    Press Enter to search • Use ↑↓ arrows to navigate
+                  </div>
                 </div>
               )}
             </div>
@@ -914,6 +1165,16 @@ function CitationNetworkPageContent() {
           }
           to {
             transform: rotate(360deg);
+          }
+        }
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
           }
         }
         .search-status {
