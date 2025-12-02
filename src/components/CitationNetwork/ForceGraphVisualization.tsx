@@ -185,10 +185,29 @@ export function ForceGraphVisualization({
   }, [graph, selectedVenues]);
 
   /**
-   * Set initial zoom level after graph loads
+   * Set initial zoom level and configure forces after graph loads
    */
   useEffect(() => {
     if (fgRef.current && graphData.nodes.length > 0) {
+      // Configure D3 forces for more stable, subtle movement
+      if (fgRef.current.d3Force) {
+        // Reduce charge force (repulsion between nodes) for less aggressive spreading
+        fgRef.current.d3Force('charge')?.strength(-200);
+
+        // Set link force with more damping for smoother connections
+        const linkForce = fgRef.current.d3Force('link');
+        if (linkForce) {
+          linkForce.distance(linkDistance / 100);
+          linkForce.strength(0.5); // Softer link strength for less rigid connections
+        }
+
+        // Add center force to keep graph centered
+        fgRef.current.d3Force('center')?.strength(0.05);
+
+        // Reduce collision force for subtler interactions
+        fgRef.current.d3Force('collision')?.strength(0.5);
+      }
+
       // Wait for initial layout to complete
       setTimeout(() => {
         if (fgRef.current) {
@@ -197,7 +216,7 @@ export function ForceGraphVisualization({
         }
       }, 500);
     }
-  }, [graphData]);
+  }, [graphData, linkDistance]);
 
   /**
    * Auto-center on selected node when selectedPaperId changes (paper card click)
@@ -402,33 +421,34 @@ export function ForceGraphVisualization({
             left: '80px',
             background: 'white',
             border: '1px solid #ddd',
-            borderRadius: '8px',
-            padding: '12px',
+            borderRadius: '6px',
+            padding: '10px',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-            maxHeight: '400px',
+            maxHeight: '350px',
             overflowY: 'auto',
-            minWidth: '250px',
+            minWidth: '200px',
+            maxWidth: '220px',
             zIndex: 1000,
           }}
         >
-          <div style={{ fontWeight: '600', marginBottom: '12px', fontSize: '14px', color: '#333' }}>
+          <div style={{ fontWeight: '600', marginBottom: '10px', fontSize: '12px', color: '#333' }}>
             Filter by Source
           </div>
           {uniqueVenues.length === 0 ? (
-            <div style={{ fontSize: '13px', color: '#999' }}>No venues available</div>
+            <div style={{ fontSize: '11px', color: '#999' }}>No venues available</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {uniqueVenues.map((venue) => (
                 <label
                   key={venue}
                   style={{
                     display: 'flex',
                     alignItems: 'flex-start',
-                    gap: '8px',
-                    fontSize: '13px',
+                    gap: '6px',
+                    fontSize: '11px',
                     cursor: 'pointer',
-                    padding: '4px',
-                    borderRadius: '4px',
+                    padding: '3px',
+                    borderRadius: '3px',
                     transition: 'background 0.2s',
                   }}
                   onMouseEnter={(e) => {
@@ -443,14 +463,14 @@ export function ForceGraphVisualization({
                     checked={selectedVenues.has(venue)}
                     onChange={() => toggleVenue(venue)}
                     style={{
-                      width: '16px',
-                      height: '16px',
+                      width: '14px',
+                      height: '14px',
                       cursor: 'pointer',
                       flexShrink: 0,
-                      marginTop: '2px',
+                      marginTop: '1px',
                     }}
                   />
-                  <span style={{ lineHeight: '1.4' }}>{venue}</span>
+                  <span style={{ lineHeight: '1.3', wordBreak: 'break-word' }}>{venue}</span>
                 </label>
               ))}
             </div>
@@ -459,13 +479,13 @@ export function ForceGraphVisualization({
             <button
               onClick={() => setSelectedVenues(new Set())}
               style={{
-                marginTop: '12px',
-                padding: '6px 12px',
+                marginTop: '10px',
+                padding: '5px 10px',
                 width: '100%',
                 background: '#f5f5f5',
                 border: '1px solid #ddd',
-                borderRadius: '4px',
-                fontSize: '13px',
+                borderRadius: '3px',
+                fontSize: '11px',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
               }}
@@ -500,15 +520,24 @@ export function ForceGraphVisualization({
         linkWidth={1}
         linkDirectionalParticles={0}
         linkDistance={linkDistance}
-        d3AlphaDecay={0.002}
-        d3VelocityDecay={0.05}
+        d3AlphaDecay={0.01}
+        d3VelocityDecay={0.3}
+        d3AlphaMin={0.001}
         onNodeHover={handleNodeHover}
         onNodeClick={handleNodeClick}
-        cooldownTicks={400}
+        cooldownTicks={200}
         enableNodeDrag={true}
         enableZoomInteraction={true}
         enablePanInteraction={true}
         backgroundColor="hsl(0, 0%, 98%)"
+        nodeRelSize={6}
+        warmupTicks={100}
+        onEngineStop={() => {
+          if (fgRef.current) {
+            fgRef.current.d3Force('charge')?.strength(-200);
+            fgRef.current.d3Force('link')?.distance(linkDistance / 100);
+          }
+        }}
       />
     </div>
   );
