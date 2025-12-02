@@ -12,6 +12,22 @@
 // ============================================================================
 
 /**
+ * Breakdown of similarity scores across different dimensions
+ */
+export interface SimilarityBreakdown {
+  /** Citation-based similarity (0-1) */
+  citation: number;
+  /** Topic/field-of-study similarity (0-1) */
+  topic: number;
+  /** Temporal proximity similarity (0-1) */
+  temporal: number;
+  /** Author overlap similarity (0-1) */
+  author: number;
+  /** Venue/journal similarity (0-1) */
+  venue: number;
+}
+
+/**
  * Represents a scholarly paper with all its metadata
  */
 export interface Paper {
@@ -31,6 +47,30 @@ export interface Paper {
   abstract: string;
   /** Source of the paper data (e.g., "Google Scholar", "arXiv") */
   source: string;
+
+  // Optional semantic fields
+  /** Venue or journal where the paper was published */
+  venue?: string;
+  /** Number of influential citations */
+  influentialCitationCount?: number;
+  /** Number of papers this paper references */
+  referenceCount?: number;
+  /** AI-generated TL;DR summary */
+  tldr?: string;
+  /** Fields of study / research topics */
+  fieldsOfStudy?: string[];
+  /** External IDs (DOI, PubMed, arXiv) */
+  externalIds?: {
+    DOI?: string;
+    PubMed?: string;
+    ArXiv?: string;
+  };
+
+  // Similarity scores (calculated relative to origin paper)
+  /** Overall similarity to origin paper (0-1) */
+  similarityToOrigin?: number;
+  /** Detailed breakdown of similarity scores */
+  similarityBreakdown?: SimilarityBreakdown;
 }
 
 /**
@@ -77,6 +117,11 @@ export interface NetworkNode {
 }
 
 /**
+ * Type of relationship between papers
+ */
+export type EdgeType = 'citation' | 'reference' | 'semantic' | 'co-citation';
+
+/**
  * Represents an edge (connection) in the citation network graph
  * Each edge corresponds to a citation relationship
  */
@@ -91,6 +136,12 @@ export interface NetworkEdge {
   citation: Citation;
   /** Visual weight/thickness of the edge (based on citation importance) */
   weight?: number;
+  /** Type of relationship */
+  edgeType?: EdgeType;
+  /** Semantic similarity score for semantic edges (0-1) */
+  semanticSimilarity?: number;
+  /** Shared fields of study for semantic edges */
+  sharedFieldsOfStudy?: string[];
 }
 
 /**

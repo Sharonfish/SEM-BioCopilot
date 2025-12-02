@@ -1,11 +1,9 @@
 /**
- * Graph Controls Component
+ * Graph Controls Component (paper-web-viz style)
  *
- * Provides UI controls for the citation network visualization:
+ * Minimal floating controls for the citation network visualization:
  * - Zoom in/out
  * - Fit view
- * - Reset view
- * - Toggle edge visibility
  *
  * @module components/CitationNetwork/GraphControls
  */
@@ -14,31 +12,25 @@
 
 import React from 'react';
 import { useReactFlow } from 'reactflow';
-import { ZoomIn, ZoomOut, Maximize2, RotateCcw, Eye, EyeOff } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 
 /**
  * Props for GraphControls component
  */
 interface GraphControlsProps {
-  /** Whether edges are currently visible */
-  showEdges?: boolean;
-  /** Callback when edge visibility is toggled */
-  onToggleEdges?: () => void;
   /** Additional CSS class names */
   className?: string;
 }
 
 /**
- * Graph Controls Component
+ * Graph Controls Component (Minimal paper-web-viz style)
  *
- * Provides interactive controls for manipulating the graph view
+ * Simple floating icon buttons for graph manipulation
  */
 export function GraphControls({
-  showEdges = true,
-  onToggleEdges,
   className = '',
 }: GraphControlsProps) {
-  const { zoomIn, zoomOut, fitView, setCenter } = useReactFlow();
+  const { zoomIn, zoomOut, fitView } = useReactFlow();
 
   /**
    * Zoom in by 50%
@@ -61,69 +53,37 @@ export function GraphControls({
     fitView({ padding: 0.2, duration: 300 });
   };
 
-  /**
-   * Reset view to center (0, 0)
-   */
-  const handleReset = () => {
-    setCenter(0, 0, { zoom: 1, duration: 300 });
-  };
-
   return (
-    <div className={`graph-controls ${className}`}>
+    <div className={`floating-zoom-controls ${className}`}>
       {/* Zoom In */}
       <button
         onClick={handleZoomIn}
-        className="control-button"
+        className="zoom-button"
         title="Zoom In"
         aria-label="Zoom in"
       >
-        <ZoomIn size={20} />
+        <ZoomIn size={16} />
       </button>
 
       {/* Zoom Out */}
       <button
         onClick={handleZoomOut}
-        className="control-button"
+        className="zoom-button"
         title="Zoom Out"
         aria-label="Zoom out"
       >
-        <ZoomOut size={20} />
+        <ZoomOut size={16} />
       </button>
 
       {/* Fit View */}
       <button
         onClick={handleFitView}
-        className="control-button"
+        className="zoom-button"
         title="Fit View"
         aria-label="Fit entire graph in view"
       >
-        <Maximize2 size={20} />
+        <Maximize2 size={16} />
       </button>
-
-      {/* Reset View */}
-      <button
-        onClick={handleReset}
-        className="control-button"
-        title="Reset View"
-        aria-label="Reset view to center"
-      >
-        <RotateCcw size={20} />
-      </button>
-
-      {/* Separator */}
-      <div className="control-separator" />
-
-      {/* Toggle Edges */}
-      {onToggleEdges && (
-        <button
-          onClick={onToggleEdges}
-          className={`control-button ${showEdges ? 'active' : ''}`}
-          title={showEdges ? 'Hide Edges' : 'Show Edges'}
-          aria-label={showEdges ? 'Hide citation edges' : 'Show citation edges'}
-        >
-          {showEdges ? <Eye size={20} /> : <EyeOff size={20} />}
-        </button>
-      )}
     </div>
   );
 }

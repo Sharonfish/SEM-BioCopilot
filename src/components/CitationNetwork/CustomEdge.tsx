@@ -21,6 +21,57 @@ export interface CustomEdgeData {
 }
 
 /**
+ * Get edge color based on edge type
+ */
+function getEdgeColor(edge?: NetworkEdge): string {
+  if (!edge) return '#94a3b8'; // Default gray
+
+  // If edge has explicit type, use that
+  if (edge.edgeType) {
+    switch (edge.edgeType) {
+      case 'citation':
+        return '#4CAF50'; // Green for citations
+      case 'reference':
+        return '#2196F3'; // Blue for references
+      case 'semantic':
+        return '#FF9800'; // Orange for semantic connections
+      case 'co-citation':
+        return '#9C27B0'; // Purple for co-citations
+      default:
+        return '#94a3b8'; // Gray for unknown
+    }
+  }
+
+  // Fallback to citation type
+  if (edge.citation) {
+    return edge.citation.type === 'cites' ? '#4CAF50' : '#2196F3';
+  }
+
+  return '#94a3b8';
+}
+
+/**
+ * Get edge opacity based on semantic similarity
+ */
+function getEdgeOpacity(edge?: NetworkEdge): number {
+  if (!edge || !edge.semanticSimilarity) return 0.6; // Default opacity
+
+  // Map similarity (0-1) to opacity (0.3-1.0)
+  return 0.3 + edge.semanticSimilarity * 0.7;
+}
+
+/**
+ * Get edge stroke width based on weight
+ */
+function getEdgeWidth(edge?: NetworkEdge): number {
+  if (!edge) return 2;
+
+  const weight = edge.weight || 1;
+  // Map weight to stroke width (1-4)
+  return Math.min(4, Math.max(1, weight * 2));
+}
+
+/**
  * Custom Edge Component
  *
  * Renders citation relationships with:
@@ -55,14 +106,17 @@ export const CustomEdge = memo((props: EdgeProps<CustomEdgeData>) => {
     targetPosition,
   });
 
-  // Determine edge color based on citation type
-  const edgeColor = edge?.citation.type === 'cites' ? '#94a3b8' : '#64748b';
+  // Get edge visual properties
+  const edgeColor = getEdgeColor(edge);
+  const edgeOpacity = getEdgeOpacity(edge);
+  const edgeWidth = getEdgeWidth(edge);
 
   // Edge styles
   const edgeStyle = {
     ...style,
     stroke: edgeColor,
-    strokeWidth: 2,
+    strokeWidth: edgeWidth,
+    opacity: edgeOpacity,
   };
 
   return (
