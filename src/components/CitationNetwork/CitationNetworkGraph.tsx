@@ -53,6 +53,36 @@ export interface CitationNetworkGraphProps {
 // ============================================================================
 
 /**
+ * Calculate edge length based on similarity
+ * Higher similarity = shorter edge length
+ */
+function getEdgeLength(edge: any, graph: NetworkGraph): number {
+  const baseLength = 150;
+  const minLength = 80;
+  const maxLength = 300;
+
+  // Get source and target nodes
+  const sourceNode = graph.nodes.find((n) => n.id === edge.source);
+  const targetNode = graph.nodes.find((n) => n.id === edge.target);
+
+  // Use semantic similarity if available, otherwise use default
+  const similarity = edge.semanticSimilarity || 0;
+
+  // If no similarity data, check if target has similarity to origin
+  let effectiveSimilarity = similarity;
+  if (similarity === 0 && targetNode?.paper?.similarityToOrigin) {
+    effectiveSimilarity = targetNode.paper.similarityToOrigin;
+  }
+
+  // Map similarity to edge length (inverted: high similarity = short edge)
+  // similarity 1.0 → minLength (80)
+  // similarity 0.0 → maxLength (300)
+  const length = maxLength - effectiveSimilarity * (maxLength - minLength);
+
+  return Math.round(length);
+}
+
+/**
  * Calculate node positions using Dagre layout algorithm
  */
 function getLayoutedElements(graph: NetworkGraph) {
@@ -76,9 +106,12 @@ function getLayoutedElements(graph: NetworkGraph) {
     dagreGraph.setNode(node.id, { width: size, height: size });
   });
 
-  // Add edges
+  // Add edges with dynamic length based on similarity
   graph.edges.forEach((edge) => {
-    dagreGraph.setEdge(edge.source, edge.target);
+    const edgeLength = getEdgeLength(edge, graph);
+    dagreGraph.setEdge(edge.source, edge.target, {
+      minlen: Math.round(edgeLength / 50), // Convert to ranksep units
+    });
   });
 
   // Calculate layout
@@ -160,8 +193,6 @@ function CitationNetworkGraphInternal({
   onNodeHover,
   className = '',
 }: CitationNetworkGraphProps) {
-  const [showEdges, setShowEdges] = useState(true);
-
   // Apply layout to graph
   const layoutedGraph = useMemo(() => getLayoutedElements(graph), [graph]);
 
@@ -172,8 +203,8 @@ function CitationNetworkGraphInternal({
   );
 
   const initialEdges = useMemo(
-    () => convertToReactFlowEdges(layoutedGraph, showEdges),
-    [layoutedGraph, showEdges]
+    () => convertToReactFlowEdges(layoutedGraph, true),
+    [layoutedGraph]
   );
 
   // Use React Flow state hooks
@@ -185,7 +216,7 @@ function CitationNetworkGraphInternal({
     setNodes(initialNodes);
   }, [initialNodes, setNodes]);
 
-  // Update edges when graph or showEdges changes
+  // Update edges when graph changes
   useEffect(() => {
     setEdges(initialEdges);
   }, [initialEdges, setEdges]);
@@ -199,11 +230,6 @@ function CitationNetworkGraphInternal({
     },
     [onNodeClick]
   );
-
-  // Toggle edge visibility
-  const handleToggleEdges = useCallback(() => {
-    setShowEdges((prev) => !prev);
-  }, []);
 
   // Custom node types
   const nodeTypes = useMemo(
@@ -239,16 +265,7 @@ function CitationNetworkGraphInternal({
         attributionPosition="bottom-right"
       >
         <Background color="#cbd5e1" gap={16} />
-        <Controls showInteractive={false} />
-        <MiniMap
-          nodeColor={(node) => {
-            const data = node.data as CustomNodeData;
-            return data.node.isOrigin ? '#3b82f6' : '#94a3b8';
-          }}
-          maskColor="rgba(0, 0, 0, 0.1)"
-          position="bottom-left"
-        />
-        <GraphControls showEdges={showEdges} onToggleEdges={handleToggleEdges} />
+        <GraphControls />
       </ReactFlow>
     </div>
   );

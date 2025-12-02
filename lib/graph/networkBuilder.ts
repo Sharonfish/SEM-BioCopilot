@@ -6,6 +6,7 @@
  */
 
 import type { Paper, NetworkGraph, NetworkNode, NetworkEdge, Citation } from '@/src/types/citationNetwork'
+import { calculateBatchSimilarity } from '@/lib/similarity/paperSimilarity'
 
 export interface NetworkBuilderOptions {
   /** Maximum depth of citation relationships to include */
@@ -18,6 +19,10 @@ export interface NetworkBuilderOptions {
   includeCoCitations?: boolean
   /** Include bibliographic coupling */
   includeBibliographicCoupling?: boolean
+  /** Include semantic edges based on shared topics */
+  includeSemanticEdges?: boolean
+  /** Minimum similarity threshold for semantic edges (0-1) */
+  minSemanticSimilarity?: number
 }
 
 export interface BuildNetworkResult {
@@ -45,6 +50,8 @@ export function buildCitationNetwork(
     maxNodes = 100,
     includeCoCitations = false,
     includeBibliographicCoupling = false,
+    includeSemanticEdges = false,
+    minSemanticSimilarity = 0.5,
   } = options
 
   // Filter papers by citation threshold
@@ -54,8 +61,25 @@ export function buildCitationNetwork(
   const sortedPapers = [...filteredPapers].sort((a, b) => b.citationCount - a.citationCount)
   const includedPapers = sortedPapers.slice(0, maxNodes)
 
+  // Find origin paper
+  const originPaper = includedPapers.find((p) => p.id === originPaperId) || includedPapers[0]
+
+  // Calculate similarity scores for all papers relative to origin
+  console.log(`[Citation Network] Calculating similarity scores for ${includedPapers.length} papers...`)
+  const similarities = calculateBatchSimilarity(includedPapers, originPaper)
+
+  // Add similarity scores to papers
+  const papersWithSimilarity = includedPapers.map((paper) => {
+    const similarity = similarities.get(paper.id)
+    return {
+      ...paper,
+      similarityToOrigin: similarity?.overall,
+      similarityBreakdown: similarity?.breakdown,
+    }
+  })
+
   // Build nodes
-  const nodes: NetworkNode[] = includedPapers.map((paper) => ({
+  const nodes: NetworkNode[] = papersWithSimilarity.map((paper) => ({
     id: paper.id,
     paper: paper,
     x: 0,
@@ -72,6 +96,10 @@ export function buildCitationNetwork(
   // For now, create a simple citation graph
   // In a real implementation, you would have citation relationship data
   edges.push(...generateCitationEdges(includedPapers, originPaperId))
+
+  if (includeSemanticEdges) {
+    edges.push(...generateSemanticEdges(includedPapers, minSemanticSimilarity))
+  }
 
   if (includeCoCitations) {
     edges.push(...generateCoCitationEdges(includedPapers))
@@ -154,6 +182,56 @@ function generateCitationEdges(papers: Paper[], originPaperId: string): NetworkE
     }
   }
 
+  return edges
+}
+
+/**
+ * Generates semantic edges based on shared fields of study
+ * Papers with significant topic overlap get semantic connections
+ */
+function generateSemanticEdges(papers: Paper[], minSimilarity: number = 0.5): NetworkEdge[] {
+  const edges: NetworkEdge[] = []
+
+  // Compare all pairs of papers
+  for (let i = 0; i < papers.length; i++) {
+    for (let j = i + 1; j < papers.length; j++) {
+      const paper1 = papers[i]
+      const paper2 = papers[j]
+
+      // Skip if either paper lacks fieldsOfStudy
+      if (!paper1.fieldsOfStudy || !paper2.fieldsOfStudy) continue
+      if (paper1.fieldsOfStudy.length === 0 || paper2.fieldsOfStudy.length === 0) continue
+
+      // Calculate Jaccard similarity of fields of study
+      const set1 = new Set(paper1.fieldsOfStudy.map((f) => f.toLowerCase()))
+      const set2 = new Set(paper2.fieldsOfStudy.map((f) => f.toLowerCase()))
+
+      const intersection = new Set([...set1].filter((x) => set2.has(x)))
+      const union = new Set([...set1, ...set2])
+
+      const similarity = intersection.size / union.size
+
+      // Only create edge if similarity exceeds threshold
+      if (similarity >= minSimilarity) {
+        edges.push({
+          id: `semantic-${paper1.id}-${paper2.id}`,
+          source: paper1.id,
+          target: paper2.id,
+          citation: {
+            sourceId: paper1.id,
+            targetId: paper2.id,
+            type: 'cites', // Placeholder
+          },
+          weight: similarity * 2, // Weight based on similarity
+          edgeType: 'semantic',
+          semanticSimilarity: similarity,
+          sharedFieldsOfStudy: Array.from(intersection),
+        })
+      }
+    }
+  }
+
+  console.log(`[Citation Network] Generated ${edges.length} semantic edges (min similarity: ${minSimilarity})`)
   return edges
 }
 

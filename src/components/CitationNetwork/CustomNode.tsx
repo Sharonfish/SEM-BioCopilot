@@ -12,6 +12,7 @@
 import React, { memo } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
 import type { NetworkNode } from '@/types/citationNetwork';
+import { getSimilarityColor } from '@/lib/similarity/paperSimilarity';
 
 /**
  * Data structure for custom node
@@ -35,6 +36,7 @@ function getNodeSize(citationCount: number): number {
 /**
  * Get color based on publication year and node type
  * Uses Bio Copilot IDE blue/green color scheme
+ * More recent papers = darker colors
  */
 function getNodeColor(
   year: number,
@@ -56,19 +58,53 @@ function getNodeColor(
   // Derivative works (newer papers): Green tones (#4CAF50, #81C784)
   if (isPriorWork !== undefined) {
     if (isPriorWork) {
-      // Blue gradient for prior works
-      const lightness = 45 + normalized * 25; // 45% to 70%
+      // Blue gradient for prior works - INVERTED: recent = darker
+      const lightness = 70 - normalized * 25; // 70% to 45% (inverted)
       return `hsl(207, 90%, ${lightness}%)`; // Blue hue
     } else {
-      // Green gradient for derivative works
-      const lightness = 45 + normalized * 25; // 45% to 70%
+      // Green gradient for derivative works - INVERTED: recent = darker
+      const lightness = 70 - normalized * 25; // 70% to 45% (inverted)
       return `hsl(122, 39%, ${lightness}%)`; // Green hue
     }
   }
 
-  // Default: Blue-green gradient
+  // Default: Blue-green gradient - INVERTED: recent = darker
+  // Recent papers: darker (35% lightness), Old papers: lighter (60% lightness)
+  const lightness = 60 - normalized * 25; // 60% to 35%
   const hue = 200 + normalized * 20; // 200 to 220 (blue to cyan)
-  return `hsl(${hue}, 70%, 55%)`;
+  return `hsl(${hue}, 70%, ${lightness}%)`;
+}
+
+/**
+ * Get node opacity based on similarity to origin
+ * Higher similarity = more opaque
+ */
+function getNodeOpacity(similarity?: number): number {
+  if (similarity === undefined) return 1.0;
+  // Map similarity (0-1) to opacity (0.4-1.0)
+  return 0.4 + similarity * 0.6;
+}
+
+/**
+ * Get node glow/shadow based on similarity to origin
+ * Higher similarity = stronger glow
+ */
+function getNodeGlow(similarity?: number, baseColor?: string): string {
+  if (similarity === undefined || similarity === 0) {
+    return '0 2px 4px rgba(0,0,0,0.2)'; // Default shadow
+  }
+
+  // Get similarity color for glow
+  const glowColor = getSimilarityColor(similarity);
+
+  // Map similarity to glow intensity
+  // High similarity (0.8+): strong glow
+  // Medium similarity (0.4-0.8): medium glow
+  // Low similarity (<0.4): weak glow
+  const intensity = similarity * 20; // 0-20px
+  const opacity = similarity * 0.6; // 0-0.6 opacity
+
+  return `0 0 ${intensity}px ${glowColor}${Math.round(opacity * 255).toString(16).padStart(2, '0')}, 0 2px 4px rgba(0,0,0,0.2)`;
 }
 
 /**
@@ -105,6 +141,8 @@ export const CustomNode = memo(({ data }: NodeProps<CustomNodeData>) => {
   const size = getNodeSize(paper.citationCount || 0);
   const color = getNodeColor(paper.year || 2000, isOrigin || false, isSelected || false);
   const authors = getShortAuthors(paper.authors || []);
+  const opacity = getNodeOpacity(paper.similarityToOrigin);
+  const glow = getNodeGlow(paper.similarityToOrigin, color);
 
   return (
     <div
@@ -127,8 +165,10 @@ export const CustomNode = memo(({ data }: NodeProps<CustomNodeData>) => {
           width: size,
           height: size,
           backgroundColor: color,
+          opacity: opacity,
+          boxShadow: glow,
         }}
-        title={`${paper.title || 'Unknown'}\n${(paper.authors || []).join(', ')}\n${paper.year || 'N/A'} • ${paper.citationCount || 0} citations`}
+        title={`${paper.title || 'Unknown'}\n${(paper.authors || []).join(', ')}\n${paper.year || 'N/A'} • ${paper.citationCount || 0} citations${paper.similarityToOrigin !== undefined ? `\nSimilarity: ${(paper.similarityToOrigin * 100).toFixed(0)}%` : ''}`}
       >
         {/* Show citation count inside larger nodes */}
         {size > 50 && (

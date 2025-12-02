@@ -18,12 +18,13 @@
 
 'use client';
 
-import React, { useState, useCallback, Suspense, useEffect } from 'react';
+import React, { useState, useCallback, Suspense, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { CitationNetworkGraph } from '@/src/components/CitationNetwork/CitationNetworkGraph';
+import { ForceGraphVisualization } from '@/src/components/CitationNetwork/ForceGraphVisualization';
 import { cancerMockData } from '@/src/data/mockCancerCellData';
 import { buildCitationNetwork, filterNetworkByYearRange } from '@/lib/graph/networkBuilder';
 import type { Paper, NetworkGraph } from '@/src/types/citationNetwork';
+import { getSimilarityColor, getSimilarityLabel } from '@/lib/similarity/paperSimilarity';
 import '@/src/styles/citationNetwork.css';
 
 function CitationNetworkPageContent() {
@@ -46,6 +47,8 @@ function CitationNetworkPageContent() {
   const [showPriorWorks, setShowPriorWorks] = useState(true);
   const [showDerivativeWorks, setShowDerivativeWorks] = useState(true);
   const [yearRange, setYearRange] = useState<[number, number]>([1970, 2025]);
+  const [sortBy, setSortBy] = useState<'similarity' | 'citations' | 'year'>('similarity');
+  const [showSemanticEdges, setShowSemanticEdges] = useState(false);
 
   // Perform search on mount if initial query exists
   useEffect(() => {
@@ -75,7 +78,7 @@ function CitationNetworkPageContent() {
         },
         body: JSON.stringify({
           query: query.trim(),
-          maxResults: 30,
+          maxResults: 50,
           sortBy: 'relevance',
         }),
       });
@@ -103,6 +106,8 @@ function CitationNetworkPageContent() {
         maxNodes: 50,
         minCitations: 0,
         includeCoCitations: false,
+        includeSemanticEdges: showSemanticEdges,
+        minSemanticSimilarity: 0.5,
       });
 
       setGraph(networkResult.graph);
@@ -148,43 +153,99 @@ function CitationNetworkPageContent() {
       const networkResult = buildCitationNetwork(papers, selectedPaperId, {
         maxNodes: 50,
         minCitations: 0,
+        includeSemanticEdges: showSemanticEdges,
+        minSemanticSimilarity: 0.5,
       });
       setGraph(networkResult.graph);
       console.log(`[Citation Network] Set new origin: ${selectedPaperId}`);
     }
   };
 
-  const handleExpandNetwork = () => {
-    if (selectedPaperId) {
-      // Would expand node to show more citations
-      // For now, just log
-      console.log('Expanding network for:', selectedPaperId);
-      // In real implementation: fetch more papers related to this one
-    }
-  };
+  // Ref for paper cards to enable auto-scrolling
+  const paperCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const handleNodeClick = useCallback((paperId: string) => {
     setSelectedPaperId(paperId);
   }, []);
 
+  // Auto-scroll to selected paper in left panel when node is clicked
+  useEffect(() => {
+    if (selectedPaperId && paperCardRefs.current.has(selectedPaperId)) {
+      const paperCard = paperCardRefs.current.get(selectedPaperId);
+      if (paperCard) {
+        paperCard.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+      }
+    }
+  }, [selectedPaperId]);
+
   const handleNodeHover = useCallback((paperId: string | null) => {
     setHoveredPaperId(paperId);
   }, []);
 
-  // Filter papers based on year range and search query
+  // Filter papers based on year range
   const filteredPapers = papers.filter((paper) => {
     if (paper.year < yearRange[0] || paper.year > yearRange[1]) return false;
     return true;
   });
 
+  // Sort papers based on selected criteria
+  const sortedPapers = useMemo(() => {
+    const sorted = [...filteredPapers];
+    switch (sortBy) {
+      case 'similarity':
+        return sorted.sort((a, b) => (b.similarityToOrigin || 0) - (a.similarityToOrigin || 0));
+      case 'citations':
+        return sorted.sort((a, b) => b.citationCount - a.citationCount);
+      case 'year':
+        return sorted.sort((a, b) => b.year - a.year);
+      default:
+        return sorted;
+    }
+  }, [filteredPapers, sortBy]);
+
   // Update graph when year range changes
   useEffect(() => {
-    if (papers.length > 0 && graph.nodes.length > 0) {
-      const filteredGraph = filterNetworkByYearRange(graph, papers, yearRange);
-      setGraph(filteredGraph);
+    if (papers.length > 0 && graph.originPaperId) {
+      // Filter papers based on year range
+      const filtered = papers.filter((paper) => {
+        if (paper.year < yearRange[0] || paper.year > yearRange[1]) return false;
+        return true;
+      });
+
+      // Rebuild graph with filtered papers
+      if (filtered.length > 0) {
+        const networkResult = buildCitationNetwork(filtered, graph.originPaperId, {
+          maxNodes: 50,
+          minCitations: 0,
+          includeCoCitations: false,
+          includeSemanticEdges: showSemanticEdges,
+          minSemanticSimilarity: 0.5,
+        });
+        setGraph(networkResult.graph);
+        console.log(`[Citation Network] Rebuilt graph with ${filtered.length} filtered papers`);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [yearRange]);
+
+  // Rebuild graph when semantic edges toggle changes
+  useEffect(() => {
+    if (papers.length > 0 && graph.originPaperId) {
+      const networkResult = buildCitationNetwork(papers, graph.originPaperId, {
+        maxNodes: 50,
+        minCitations: 0,
+        includeCoCitations: false,
+        includeSemanticEdges: showSemanticEdges,
+        minSemanticSimilarity: 0.5,
+      });
+      setGraph(networkResult.graph);
+      console.log(`[Citation Network] Rebuilt graph with semantic edges: ${showSemanticEdges}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSemanticEdges]);
 
   const selectedPaper = selectedPaperId
     ? papers.find((p) => p.id === selectedPaperId) || null
@@ -366,26 +427,39 @@ function CitationNetworkPageContent() {
         </div>
       )}
 
-      {useRealData && !searchError && (
-        <div className="search-status success">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M9 12l2 2 4-4" />
-          </svg>
-          <span>Showing results for: <strong>&quot;{searchQuery}&quot;</strong> ({papers.length} papers found)</span>
-        </div>
-      )}
-
       {/* Main Three-Column Layout */}
       <div className="citation-network-content">
         {/* Left Sidebar - Papers List */}
         <aside className="papers-sidebar">
           <div className="sidebar-header">
             <h3>Papers</h3>
-            <span className="count-badge">{filteredPapers.length}</span>
           </div>
 
           <div className="filters">
+            {/* Sort Dropdown */}
+            <div className="filter-group">
+              <label htmlFor="sort-select">Sort By</label>
+              <select
+                id="sort-select"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as 'similarity' | 'citations' | 'year')}
+                className="sort-select"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: '1px solid #ddd',
+                  fontSize: '14px',
+                  background: 'white',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="similarity">Highest Relevance</option>
+                <option value="citations">Most Citations</option>
+                <option value="year">Most Recent</option>
+              </select>
+            </div>
+
             <div className="filter-group">
               <label>
                 Year Range: {yearRange[0]} - {yearRange[1]}
@@ -419,96 +493,78 @@ function CitationNetworkPageContent() {
                 <p style={{ color: '#999' }}>No papers in this year range</p>
               </div>
             ) : (
-              filteredPapers
-                .sort((a, b) => b.citationCount - a.citationCount)
-                .map((paper) => (
-                  <div
-                    key={paper.id}
-                    className={`paper-card ${paper.id === graph.originPaperId ? 'origin' : ''} ${
-                      paper.id === selectedPaperId ? 'selected' : ''
-                    }`}
-                    onClick={() => setSelectedPaperId(paper.id)}
-                  >
-                    <div className="paper-card-title">{paper.title}</div>
-                    <div className="paper-card-authors">{formatAuthors(paper.authors)}</div>
-                    <div className="paper-card-meta">
-                      <span>{paper.year}</span>
-                      <span>•</span>
-                      <span>{paper.citationCount.toLocaleString()} citations</span>
+              sortedPapers.map((paper) => (
+                <div
+                  key={paper.id}
+                  ref={(el) => {
+                    if (el) {
+                      paperCardRefs.current.set(paper.id, el);
+                    } else {
+                      paperCardRefs.current.delete(paper.id);
+                    }
+                  }}
+                  className={`paper-card ${paper.id === graph.originPaperId ? 'origin' : ''} ${
+                    paper.id === selectedPaperId ? 'selected' : ''
+                  }`}
+                  onClick={() => setSelectedPaperId(paper.id)}
+                >
+                  {/* Similarity Badge */}
+                  {paper.similarityToOrigin !== undefined && paper.similarityToOrigin > 0 && (
+                    <div
+                      className="similarity-badge"
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        padding: '4px 8px',
+                        borderRadius: '12px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        color: 'white',
+                        background: getSimilarityColor(paper.similarityToOrigin),
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                        zIndex: 1
+                      }}
+                      title={`${getSimilarityLabel(paper.similarityToOrigin)} relevance to origin paper`}
+                    >
+                      {(paper.similarityToOrigin * 100).toFixed(0)}%
                     </div>
+                  )}
+
+                  <div className="paper-card-title">{paper.title}</div>
+                  <div className="paper-card-authors">{formatAuthors(paper.authors)}</div>
+                  <div className="paper-card-meta">
+                    <span>{paper.year}</span>
+                    <span>•</span>
+                    <span>{paper.citationCount.toLocaleString()} citations</span>
+                    {paper.similarityToOrigin !== undefined && paper.similarityToOrigin > 0 && (
+                      <>
+                        <span>•</span>
+                        <span>{(paper.similarityToOrigin * 100).toFixed(0)}% relevance</span>
+                      </>
+                    )}
+                    {paper.venue && (
+                      <>
+                        <span>•</span>
+                        <span title={paper.venue}>{paper.venue.length > 20 ? paper.venue.substring(0, 20) + '...' : paper.venue}</span>
+                      </>
+                    )}
                   </div>
-                ))
+                </div>
+              ))
             )}
           </div>
         </aside>
 
-        {/* Center - Graph Visualization */}
+        {/* Center - Graph Visualization (paper-web-viz style) */}
         <main className="graph-container">
-          <div className="graph-toolbar">
-            <div className="toolbar-section">
-              <div className="graph-info">
-                <span className="info-item">
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <circle cx="12" cy="12" r="10" />
-                  </svg>
-                  {graph.nodes.length} Papers
-                </span>
-                <span className="info-item">
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                    <polyline points="12 5 19 12 12 19" />
-                  </svg>
-                  {graph.edges.length} Citations
-                </span>
-              </div>
-            </div>
-
-            <div className="toolbar-section">
-              <button
-                className={`toggle-button ${showPriorWorks ? 'active' : ''}`}
-                onClick={() => setShowPriorWorks(!showPriorWorks)}
-                style={{ borderColor: '#2196F3' }}
-              >
-                <span
-                  className="toggle-dot"
-                  style={{ background: showPriorWorks ? '#2196F3' : '#ccc' }}
-                />
-                Prior Works
-              </button>
-              <button
-                className={`toggle-button ${showDerivativeWorks ? 'active' : ''}`}
-                onClick={() => setShowDerivativeWorks(!showDerivativeWorks)}
-                style={{ borderColor: '#4CAF50' }}
-              >
-                <span
-                  className="toggle-dot"
-                  style={{ background: showDerivativeWorks ? '#4CAF50' : '#ccc' }}
-                />
-                Derivative
-              </button>
-            </div>
-          </div>
-
           <div className="graph-visualization">
             {graph.nodes.length > 0 ? (
-              <CitationNetworkGraph
+              <ForceGraphVisualization
                 graph={graph}
                 onNodeClick={handleNodeClick}
                 onNodeHover={handleNodeHover}
+                selectedPaperId={selectedPaperId}
               />
             ) : (
               <div
@@ -662,6 +718,91 @@ function CitationNetworkPageContent() {
                   </div>
                 )}
 
+                {/* Relevance Score */}
+                {selectedPaper.similarityToOrigin !== undefined && selectedPaper.similarityToOrigin > 0 && (
+                  <div className="detail-section similarity-section">
+                    <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                        <line x1="9" y1="9" x2="9.01" y2="9" />
+                        <line x1="15" y1="9" x2="15.01" y2="9" />
+                      </svg>
+                      Relevance to Origin Paper
+                    </h4>
+                    <div style={{
+                      padding: '16px',
+                      background: '#f8f9fa',
+                      borderRadius: '8px',
+                      border: '1px solid #e0e0e0'
+                    }}>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        marginBottom: '12px'
+                      }}>
+                        <div style={{
+                          fontSize: '32px',
+                          fontWeight: '700',
+                          color: getSimilarityColor(selectedPaper.similarityToOrigin)
+                        }}>
+                          {(selectedPaper.similarityToOrigin * 100).toFixed(0)}%
+                        </div>
+                        <div style={{
+                          padding: '4px 12px',
+                          borderRadius: '12px',
+                          background: getSimilarityColor(selectedPaper.similarityToOrigin),
+                          color: 'white',
+                          fontSize: '13px',
+                          fontWeight: '600'
+                        }}>
+                          {getSimilarityLabel(selectedPaper.similarityToOrigin)}
+                        </div>
+                      </div>
+
+                      {/* Similarity Breakdown */}
+                      {selectedPaper.similarityBreakdown && (
+                        <div style={{ marginTop: '12px' }}>
+                          <div style={{ fontSize: '12px', fontWeight: '600', color: '#666', marginBottom: '8px' }}>
+                            BREAKDOWN
+                          </div>
+                          {Object.entries(selectedPaper.similarityBreakdown).map(([key, value]) => (
+                            <div key={key} style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              marginBottom: '6px',
+                              fontSize: '13px'
+                            }}>
+                              <div style={{ width: '80px', textTransform: 'capitalize', color: '#666' }}>
+                                {key}:
+                              </div>
+                              <div style={{
+                                flex: 1,
+                                height: '6px',
+                                background: '#e0e0e0',
+                                borderRadius: '3px',
+                                overflow: 'hidden'
+                              }}>
+                                <div style={{
+                                  width: `${(value as number) * 100}%`,
+                                  height: '100%',
+                                  background: getSimilarityColor(value as number),
+                                  transition: 'width 0.3s ease'
+                                }} />
+                              </div>
+                              <div style={{ width: '40px', textAlign: 'right', fontWeight: '600' }}>
+                                {((value as number) * 100).toFixed(0)}%
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div className="detail-section">
                   <h4>Network Metrics</h4>
                   <div className="metrics-grid">
@@ -718,22 +859,6 @@ function CitationNetworkPageContent() {
                       <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                     </svg>
                     Set as Origin
-                  </button>
-                  <button className="action-button secondary" onClick={handleExpandNetwork}>
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <polyline points="15 3 21 3 21 9" />
-                      <polyline points="9 21 3 21 3 15" />
-                      <line x1="21" y1="3" x2="14" y2="10" />
-                      <line x1="3" y1="21" x2="10" y2="14" />
-                    </svg>
-                    Expand Network
                   </button>
                   <button
                     className="action-button secondary"

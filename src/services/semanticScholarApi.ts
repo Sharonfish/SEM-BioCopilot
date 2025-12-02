@@ -30,6 +30,12 @@ export interface Paper {
   influentialCitationCount?: number;
   referenceCount?: number;
   tldr?: string;
+  fieldsOfStudy?: string[];
+  externalIds?: {
+    DOI?: string;
+    PubMed?: string;
+    ArXiv?: string;
+  };
 }
 
 /**
@@ -257,6 +263,8 @@ function transformToPaper(paper: SemanticScholarPaper): Paper {
     influentialCitationCount: paper.influentialCitationCount,
     referenceCount: paper.referenceCount,
     tldr: paper.tldr?.text,
+    fieldsOfStudy: paper.fieldsOfStudy || [],
+    externalIds: paper.externalIds,
   };
 }
 

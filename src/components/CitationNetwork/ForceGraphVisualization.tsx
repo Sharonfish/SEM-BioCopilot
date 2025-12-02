@@ -1,0 +1,517 @@
+/**
+ * Force Graph Visualization Component
+ *
+ * Physics-based force-directed graph using react-force-graph-2d
+ * Inspired by paper-web-viz design
+ *
+ * @module components/CitationNetwork/ForceGraphVisualization
+ */
+
+'use client';
+
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import ForceGraph2D from 'react-force-graph-2d';
+import { ZoomIn, ZoomOut, Maximize2, Filter } from 'lucide-react';
+import type { NetworkGraph } from '@/types/citationNetwork';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+interface ForceGraphNode {
+  id: string;
+  name: string;
+  title: string;
+  year: number;
+  val: number;
+  citationCount: number;
+  isOrigin?: boolean;
+  similarityToOrigin?: number;
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+}
+
+interface ForceGraphLink {
+  source: string;
+  target: string;
+  semanticSimilarity?: number;
+}
+
+interface ForceGraphData {
+  nodes: ForceGraphNode[];
+  links: ForceGraphLink[];
+}
+
+interface ForceGraphVisualizationProps {
+  graph: NetworkGraph;
+  onNodeClick?: (paperId: string) => void;
+  onNodeHover?: (paperId: string | null) => void;
+  selectedPaperId?: string | null;
+  className?: string;
+}
+
+// ============================================================================
+// Data Conversion
+// ============================================================================
+
+/**
+ * Extract first author's last name from authors array
+ */
+function getFirstAuthorLastName(authors?: string[]): string {
+  if (!authors || authors.length === 0) return 'Unknown';
+
+  const firstAuthor = authors[0];
+  // Split by space and get the last part (last name)
+  const parts = firstAuthor.trim().split(' ');
+  return parts[parts.length - 1];
+}
+
+/**
+ * Convert BioCopilot NetworkGraph to ForceGraph format
+ */
+function convertToForceGraphData(graph: NetworkGraph): ForceGraphData {
+  // Convert nodes
+  const nodes: ForceGraphNode[] = graph.nodes.map((node) => {
+    const lastName = getFirstAuthorLastName(node.paper?.authors);
+    const year = node.paper?.year || 2020;
+
+    return {
+      id: node.id,
+      name: `${lastName} ${year}`,
+      title: node.paper?.title || 'Untitled',
+      year: year,
+      // Increased range from 30-200 to 20-400 for more dramatic size differences
+      val: Math.max(20, Math.min(400, Math.log10((node.paper?.citationCount || 0) + 1) * 50)),
+      citationCount: node.paper?.citationCount || 0,
+      isOrigin: node.isOrigin,
+      similarityToOrigin: node.paper?.similarityToOrigin,
+    };
+  });
+
+  // Convert edges
+  const links: ForceGraphLink[] = graph.edges.map((edge) => ({
+    source: edge.source,
+    target: edge.target,
+    semanticSimilarity: edge.semanticSimilarity,
+  }));
+
+  return { nodes, links };
+}
+
+// ============================================================================
+// Component
+// ============================================================================
+
+export function ForceGraphVisualization({
+  graph,
+  onNodeClick,
+  onNodeHover,
+  selectedPaperId,
+  className = '',
+}: ForceGraphVisualizationProps) {
+  const fgRef = useRef<any>();
+  const [graphData, setGraphData] = useState<ForceGraphData>({ nodes: [], links: [] });
+  const [linkDistance, setLinkDistance] = useState(9000);
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [selectedVenues, setSelectedVenues] = useState<Set<string>>(new Set());
+
+  // Extract unique venues from the graph
+  const uniqueVenues = useMemo(() => {
+    const venues = new Set<string>();
+    graph.nodes.forEach(node => {
+      if (node.paper?.venue) {
+        venues.add(node.paper.venue);
+      }
+    });
+    return Array.from(venues).sort();
+  }, [graph]);
+
+  // Toggle venue selection
+  const toggleVenue = useCallback((venue: string) => {
+    setSelectedVenues(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(venue)) {
+        newSet.delete(venue);
+      } else {
+        newSet.add(venue);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // Convert graph data when it changes
+  useEffect(() => {
+    const data = convertToForceGraphData(graph);
+
+    // Filter nodes based on selected venues
+    let filteredData = data;
+    if (selectedVenues.size > 0) {
+      const filteredNodeIds = new Set(
+        graph.nodes
+          .filter(node => node.paper?.venue && selectedVenues.has(node.paper.venue))
+          .map(node => node.id)
+      );
+
+      filteredData = {
+        nodes: data.nodes.filter(node => filteredNodeIds.has(node.id)),
+        links: data.links.filter(link =>
+          filteredNodeIds.has(typeof link.source === 'string' ? link.source : (link.source as any).id) &&
+          filteredNodeIds.has(typeof link.target === 'string' ? link.target : (link.target as any).id)
+        ),
+      };
+    }
+
+    setGraphData(filteredData);
+
+    // Calculate dynamic link distance based on number of nodes
+    // More nodes = need more space to spread them out
+    const nodeCount = data.nodes.length;
+
+    // Base calculation: ensure graph spreads across 70% of panel
+    // Typical middle panel width: ~1200px (after 320px + 380px sidebars from ~1920px screen)
+    // For 70% coverage: ~840px
+    // Scale based on node count: more nodes need more spacing
+    const baseDistance = 5000;
+    const scaleFactor = Math.sqrt(nodeCount); // Scale with square root for better distribution
+    const calculatedDistance = baseDistance * scaleFactor;
+
+    // Clamp between reasonable values
+    const finalDistance = Math.max(8000, Math.min(calculatedDistance, 30000));
+
+    setLinkDistance(finalDistance);
+    console.log(`[ForceGraph] ${nodeCount} nodes, link distance: ${finalDistance.toFixed(0)}px`);
+  }, [graph, selectedVenues]);
+
+  /**
+   * Set initial zoom level after graph loads
+   */
+  useEffect(() => {
+    if (fgRef.current && graphData.nodes.length > 0) {
+      // Wait for initial layout to complete
+      setTimeout(() => {
+        if (fgRef.current) {
+          // Set initial zoom to 1.44 (equivalent to 2 zoom-in clicks: 1.2 * 1.2)
+          fgRef.current.zoom(1.44, 0);
+        }
+      }, 500);
+    }
+  }, [graphData]);
+
+  /**
+   * Auto-center on selected node when selectedPaperId changes (paper card click)
+   */
+  useEffect(() => {
+    if (selectedPaperId && fgRef.current && graphData.nodes.length > 0) {
+      // Find the selected node in the graph data
+      const selectedNode = graphData.nodes.find(n => n.id === selectedPaperId);
+
+      if (selectedNode && selectedNode.x !== undefined && selectedNode.y !== undefined) {
+        // Wait a bit to ensure node has settled into position
+        setTimeout(() => {
+          if (fgRef.current) {
+            const currentZoom = fgRef.current.zoom();
+            // Only slightly adjust zoom if too far out (more subtle)
+            const targetZoom = currentZoom < 1.2 ? 1.2 : currentZoom;
+            // Longer, smoother transition (1200ms)
+            fgRef.current.centerAt(selectedNode.x, selectedNode.y, 1200);
+            if (targetZoom !== currentZoom) {
+              fgRef.current.zoom(targetZoom, 1200);
+            }
+          }
+        }, 100);
+      }
+    }
+  }, [selectedPaperId, graphData]);
+
+  /**
+   * Get node color based on properties
+   * 20-level blue gradient from dark (high similarity) to pale (low similarity)
+   */
+  const getNodeColor = useCallback((node: ForceGraphNode) => {
+    // Green only for origin node
+    if (node.isOrigin) {
+      return 'hsl(122, 47%, 45%)'; // Green for origin
+    }
+
+    // 20-level blue gradient based on similarity (darker = higher similarity)
+    // Lightness ranges from 30% (darkest) to 85% (palest)
+    const similarity = node.similarityToOrigin || 0;
+
+    // Calculate lightness: 30% at similarity 1.0, 85% at similarity 0.0
+    // Formula: lightness = 85 - (similarity * 55)
+    const lightness = 85 - (similarity * 55);
+
+    return `hsl(207, 90%, ${lightness}%)`;
+  }, []);
+
+  /**
+   * Get link color
+   */
+  const getLinkColor = useCallback((link: any) => {
+    if (link.semanticSimilarity && link.semanticSimilarity > 0.5) {
+      return 'hsl(24, 100%, 50%)'; // Orange for semantic edges
+    }
+    return 'hsl(0, 0%, 85%)'; // Light gray for citation edges
+  }, []);
+
+  /**
+   * Handle zoom in
+   */
+  const handleZoomIn = useCallback(() => {
+    if (fgRef.current) {
+      fgRef.current.zoom(fgRef.current.zoom() * 1.2, 400);
+    }
+  }, []);
+
+  /**
+   * Handle zoom out
+   */
+  const handleZoomOut = useCallback(() => {
+    if (fgRef.current) {
+      fgRef.current.zoom(fgRef.current.zoom() * 0.8, 400);
+    }
+  }, []);
+
+  /**
+   * Handle reset view
+   */
+  const handleResetView = useCallback(() => {
+    if (fgRef.current) {
+      fgRef.current.zoomToFit(400, 80);
+    }
+  }, []);
+
+  /**
+   * Handle node click
+   */
+  const handleNodeClick = useCallback((node: any) => {
+    if (onNodeClick) {
+      onNodeClick(node.id);
+    }
+    // Center view on clicked node with subtle, gentle transition
+    if (fgRef.current && node.x !== undefined && node.y !== undefined) {
+      const currentZoom = fgRef.current.zoom();
+      // Only slightly adjust zoom if too far out (more subtle)
+      const targetZoom = currentZoom < 1.2 ? 1.2 : currentZoom;
+      // Longer, smoother transition (1200ms instead of 800ms)
+      fgRef.current.centerAt(node.x, node.y, 1200);
+      if (targetZoom !== currentZoom) {
+        fgRef.current.zoom(targetZoom, 1200);
+      }
+    }
+  }, [onNodeClick]);
+
+  /**
+   * Handle node hover
+   */
+  const handleNodeHover = useCallback((node: any) => {
+    if (onNodeHover) {
+      onNodeHover(node ? node.id : null);
+    }
+  }, [onNodeHover]);
+
+  /**
+   * Custom node canvas rendering
+   */
+  const nodeCanvasObject = useCallback((node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+    const label = node.name; // Already formatted as "LastName Year"
+    const fontSize = 13 / globalScale;
+    // Thin font (300 weight) for lighter appearance
+    ctx.font = `300 ${fontSize}px Inter, -apple-system, BlinkMacSystemFont, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const size = Math.sqrt(node.val) * 0.8;
+    const isSelected = selectedPaperId === node.id;
+
+    // Draw node circle
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+    ctx.fillStyle = getNodeColor(node);
+    ctx.fill();
+
+    // Draw highlight ring if selected
+    if (isSelected) {
+      ctx.strokeStyle = 'hsl(330, 65%, 55%)'; // Pink highlight for selected
+      ctx.lineWidth = 4 / globalScale;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, size + 6 / globalScale, 0, 2 * Math.PI);
+      ctx.stroke();
+    }
+    // Draw highlight ring if origin
+    else if (node.isOrigin) {
+      ctx.strokeStyle = 'hsl(122, 47%, 35%)';
+      ctx.lineWidth = 3 / globalScale;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, size + 4 / globalScale, 0, 2 * Math.PI);
+      ctx.stroke();
+    }
+
+    // Draw label (LastName Year format) - single line with lighter color
+    ctx.fillStyle = isSelected ? 'rgba(100, 100, 100, 1)' : 'rgba(120, 120, 120, 0.85)';
+    ctx.fillText(label, node.x, node.y + size + fontSize * 1.2);
+  }, [getNodeColor, selectedPaperId]);
+
+  return (
+    <div className={`force-graph-container ${className}`} style={{ width: '100%', height: '100%', position: 'relative' }}>
+      {/* Floating Zoom Controls */}
+      <div className="floating-zoom-controls">
+        <button
+          onClick={handleZoomIn}
+          className="zoom-button"
+          title="Zoom In"
+          aria-label="Zoom in"
+        >
+          <ZoomIn size={16} />
+        </button>
+        <button
+          onClick={handleZoomOut}
+          className="zoom-button"
+          title="Zoom Out"
+          aria-label="Zoom out"
+        >
+          <ZoomOut size={16} />
+        </button>
+        <button
+          onClick={handleResetView}
+          className="zoom-button"
+          title="Fit View"
+          aria-label="Fit entire graph in view"
+        >
+          <Maximize2 size={16} />
+        </button>
+        <button
+          onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+          className={`zoom-button ${selectedVenues.size > 0 ? 'active' : ''}`}
+          title="Filter by Source"
+          aria-label="Filter by paper source/venue"
+        >
+          <Filter size={16} />
+        </button>
+      </div>
+
+      {/* Filter Dropdown */}
+      {showFilterDropdown && (
+        <div
+          className="filter-dropdown"
+          style={{
+            position: 'absolute',
+            top: '20px',
+            left: '80px',
+            background: 'white',
+            border: '1px solid #ddd',
+            borderRadius: '8px',
+            padding: '12px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            maxHeight: '400px',
+            overflowY: 'auto',
+            minWidth: '250px',
+            zIndex: 1000,
+          }}
+        >
+          <div style={{ fontWeight: '600', marginBottom: '12px', fontSize: '14px', color: '#333' }}>
+            Filter by Source
+          </div>
+          {uniqueVenues.length === 0 ? (
+            <div style={{ fontSize: '13px', color: '#999' }}>No venues available</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {uniqueVenues.map((venue) => (
+                <label
+                  key={venue}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    borderRadius: '4px',
+                    transition: 'background 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#f5f5f5';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedVenues.has(venue)}
+                    onChange={() => toggleVenue(venue)}
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      marginTop: '2px',
+                    }}
+                  />
+                  <span style={{ lineHeight: '1.4' }}>{venue}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          {selectedVenues.size > 0 && (
+            <button
+              onClick={() => setSelectedVenues(new Set())}
+              style={{
+                marginTop: '12px',
+                padding: '6px 12px',
+                width: '100%',
+                background: '#f5f5f5',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '13px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#e0e0e0';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#f5f5f5';
+              }}
+            >
+              Clear All ({selectedVenues.size})
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Force Graph */}
+      <ForceGraph2D
+        ref={fgRef}
+        graphData={graphData}
+        nodeLabel={(node: any) => {
+          const similarity = node.similarityToOrigin;
+          const similarityText = similarity !== undefined && similarity > 0
+            ? `\nRelevance: ${(similarity * 100).toFixed(0)}%`
+            : '';
+          return `${node.title}${similarityText}`;
+        }}
+        nodeVal={(node: any) => node.val}
+        nodeColor={(node: any) => getNodeColor(node as ForceGraphNode)}
+        nodeCanvasObject={nodeCanvasObject}
+        linkColor={getLinkColor}
+        linkWidth={1}
+        linkDirectionalParticles={0}
+        linkDistance={linkDistance}
+        d3AlphaDecay={0.002}
+        d3VelocityDecay={0.05}
+        onNodeHover={handleNodeHover}
+        onNodeClick={handleNodeClick}
+        cooldownTicks={400}
+        enableNodeDrag={true}
+        enableZoomInteraction={true}
+        enablePanInteraction={true}
+        backgroundColor="hsl(0, 0%, 98%)"
+      />
+    </div>
+  );
+}
+
+export default ForceGraphVisualization;

@@ -23,6 +23,7 @@
     "next": "^14.2.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-force-graph-2d": "^1.29.0",
     "reactflow": "^11.11.4",
     "socket.io-client": "^4.7.2",
     "tailwind-merge": "^2.4.0",
