@@ -30,7 +30,7 @@ export function IDELayout({ projectName }: IDELayoutProps) {
   
   const { config, updateStepStatus, setCurrentStep, updateProgress, setStepError, updateStepOutput } = usePipelineStore()
   const { tabs } = useEditorStore()
-  const { selection, hasSelection } = useEditorSelectionStore()
+  const { hasSelection, text: selectionText, startLine: selectionStartLine, endLine: selectionEndLine } = useEditorSelectionStore()
   const { addLog, setExpanded } = useOutputStore()
 
   // Keyboard shortcut: Ctrl+Shift+C to open Citation Network
@@ -199,7 +199,7 @@ export function IDELayout({ projectName }: IDELayoutProps) {
   }
 
   const handleRunHighlighted = async () => {
-    if (!selection?.text || !selection.text.trim()) {
+    if (!selectionText || !selectionText.trim()) {
       addLog({
         type: 'error',
         content: 'No code selected. Please select a code block to run.',
@@ -212,12 +212,12 @@ export function IDELayout({ projectName }: IDELayoutProps) {
     stopRequested.current = false
     setExpanded(true)
 
-    const selectedCode = selection.text.trim()
+    const selectedCode = selectionText.trim()
     const activeTab = tabs.find(tab => tab.isActive)
 
     addLog({
       type: 'info',
-      content: `Executing selected code block (lines ${selection.startLine}–${selection.endLine})...`,
+      content: `Executing selected code block (lines ${selectionStartLine}–${selectionEndLine})...`,
     })
 
     try {
@@ -227,22 +227,14 @@ export function IDELayout({ projectName }: IDELayoutProps) {
         context: {
           type: 'highlighted',
           fileName: activeTab?.name || 'unknown',
-          startLine: selection.startLine,
-          endLine: selection.endLine,
+          startLine: selectionStartLine,
+          endLine: selectionEndLine,
         },
       })
 
       if (stopRequested.current) return
 
       if (result.success) {
-            // Check if this was a package installation
-            if (result.message && result.message.includes('installed')) {
-              addLog({
-                type: 'info',
-                content: `✓ ${result.message}`,
-              })
-            }
-
             // Add stdout output
             if (result.output?.stdout) {
               addLog({
@@ -260,7 +252,7 @@ export function IDELayout({ projectName }: IDELayoutProps) {
             }
 
             // Log execution time
-            if (result.executionTime && !result.message?.includes('installed')) {
+            if (result.executionTime) {
               addLog({
                 type: 'info',
                 content: `✓ Code block executed in ${result.executionTime.toFixed(2)}s`,
@@ -309,7 +301,7 @@ export function IDELayout({ projectName }: IDELayoutProps) {
         onRunHighlighted={handleRunHighlighted}
         onStop={handleStop}
         isRunning={isRunning}
-        hasSelection={hasSelection()}
+        hasSelection={hasSelection}
       />
 
       {/* Main Content Area - Three Column Layout */}

@@ -1,5 +1,5 @@
 /**
- * Editor Selection Store - 管理编辑器选中内容
+ * Editor Selection Store - for global access to current selection
  */
 
 import { create } from 'zustand'
@@ -10,37 +10,31 @@ interface EditorSelection {
   endLine: number | null
 }
 
-interface EditorSelectionStore {
-  selection: EditorSelection
+interface EditorSelectionStore extends EditorSelection {
+  hasSelection: boolean
   setSelection: (selection: EditorSelection) => void
   clearSelection: () => void
-  hasSelection: () => boolean
 }
 
 export const useEditorSelectionStore = create<EditorSelectionStore>((set, get) => ({
-  selection: {
-    text: null,
-    startLine: null,
-    endLine: null,
-  },
+  text: null,
+  startLine: null,
+  endLine: null,
+  hasSelection: false,
 
   setSelection: (selection) => {
-    set({ selection })
-  },
-
-  clearSelection: () => {
     set({
-      selection: {
-        text: null,
-        startLine: null,
-        endLine: null,
-      },
+      ...selection,
+      hasSelection: !!(selection.text && selection.text.trim().length > 0),
     })
   },
 
-  hasSelection: () => {
-    const selection = get().selection
-    return selection.text !== null && selection.text.trim().length > 0
+  clearSelection: () => {
+    set({ 
+      text: null, 
+      startLine: null, 
+      endLine: null,
+      hasSelection: false,
+    })
   },
 }))
-

@@ -1,5 +1,5 @@
 /**
- * Code Editor (Monaco Editor) with AI Explanation
+ * Code Editor (Monaco Editor) with AI Explanation and Inline Diff
  */
 
 'use client'
@@ -8,9 +8,12 @@ import { useEffect, useRef, useState } from 'react'
 import Editor, { Monaco } from '@monaco-editor/react'
 import { useEditorStore } from '@/store/editorStore'
 import { useEditorSelectionStore } from '@/store/editorSelectionStore'
+import { useCopilotModeStore } from '@/store/copilotModeStore'
 import { editor } from 'monaco-editor'
 import { ExplainButton } from './ExplainButton'
 import { ExplanationPanel } from './ExplanationPanel'
+import { useInlineEditorDiff, injectInlineDiffStyles } from './InlineEditorDiff'
+import { applyDiffHunks } from '@/lib/diff-utils'
 
 interface Selection {
   text: string
@@ -23,6 +26,13 @@ interface Selection {
 export function CodeEditor() {
   const { tabs, activeTabId, updateTabContent } = useEditorStore()
   const { setSelection: setGlobalSelection } = useEditorSelectionStore()
+  const { 
+    diffHunks, 
+    updateHunkStatus,
+    currentChange,
+    updateCodeChangeStatus,
+  } = useCopilotModeStore()
+  
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   
@@ -33,6 +43,112 @@ export function CodeEditor() {
   const [loading, setLoading] = useState(false)
 
   const activeTab = tabs.find(tab => tab.id === activeTabId)
+
+  // Inject inline diff styles on mount
+  useEffect(() => {
+    injectInlineDiffStyles()
+  }, [])
+
+  // Diff Viewer Handlers (defined early for hook usage)
+  const handleAcceptHunk = (hunkId: string) => {
+    console.log('handleAcceptHunk called with:', hunkId)
+    
+    if (!activeTab || !currentChange) {
+      console.error('No active tab or current change')
+      return
+    }
+
+    // Mark hunk as accepted (will hide its diff display)
+    updateHunkStatus(hunkId, 'accepted')
+    
+    console.log('Hunk marked as accepted:', hunkId)
+  }
+
+  const handleRejectHunk = (hunkId: string) => {
+    console.log('handleRejectHunk called with:', hunkId)
+    
+    // Mark hunk as rejected (will hide its diff display)
+    updateHunkStatus(hunkId, 'rejected')
+    
+    console.log('Hunk marked as rejected:', hunkId)
+  }
+
+  // Track if we've already applied changes for this set of hunks
+  const appliedChangeRef = useRef<string | null>(null)
+
+  // Apply all accepted changes when user is done reviewing
+  useEffect(() => {
+    if (!activeTab || !currentChange || diffHunks.length === 0) return
+
+    // Check if all hunks have been reviewed (none are pending)
+    const pendingHunks = diffHunks.filter(h => h.status === 'pending')
+    const acceptedHunks = diffHunks.filter(h => h.status === 'accepted')
+    const rejectedHunks = diffHunks.filter(h => h.status === 'rejected')
+    
+    // Create a unique key for this set of changes
+    const changeKey = `${currentChange.id}-${acceptedHunks.length}-${rejectedHunks.length}`
+    
+    // If we've already applied this exact set of changes, skip
+    if (appliedChangeRef.current === changeKey) {
+      return
+    }
+    
+    // If there are no pending hunks, apply changes
+    if (pendingHunks.length === 0) {
+      if (acceptedHunks.length > 0) {
+        console.log('All hunks reviewed, applying accepted changes...')
+        
+        // Apply all accepted hunks to the original code
+        let lines = currentChange.originalCode.split('\n')
+        
+        // Sort hunks by position (descending) to apply from bottom to top
+        const sortedHunks = [...acceptedHunks].sort((a, b) => b.oldStart - a.oldStart)
+        
+        sortedHunks.forEach(hunk => {
+          const deleteStart = hunk.oldStart - 1 // 0-based
+          const deleteCount = hunk.deletedLines.length
+          const addedContent = hunk.addedLines.map(line => line.content)
+          
+          // Replace deleted lines with added lines
+          const before = lines.slice(0, deleteStart)
+          const after = lines.slice(deleteStart + deleteCount)
+          lines = [...before, ...addedContent, ...after]
+        })
+        
+        const newContent = lines.join('\n')
+        console.log('Applying changes: from', currentChange.originalCode.length, 'to', newContent.length, 'chars')
+        
+        // Update editor with all changes at once
+        updateTabContent(activeTab.id, newContent)
+        updateCodeChangeStatus(currentChange.id, 'accepted')
+        
+        // Mark as applied
+        appliedChangeRef.current = changeKey
+      } else if (acceptedHunks.length === 0 && rejectedHunks.length > 0) {
+        // All hunks rejected
+        console.log('All hunks rejected, no changes applied')
+        updateCodeChangeStatus(currentChange.id, 'rejected')
+        
+        // Mark as applied
+        appliedChangeRef.current = changeKey
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diffHunks, activeTab, currentChange])
+
+  // Reset applied change ref when current change changes
+  useEffect(() => {
+    appliedChangeRef.current = null
+  }, [currentChange?.id])
+
+  // Use inline diff hook for showing diffs directly in editor
+  useInlineEditorDiff({
+    editorInstance: editorRef.current,
+    hunks: diffHunks,
+    onAcceptHunk: handleAcceptHunk,
+    onRejectHunk: handleRejectHunk,
+    originalCode: currentChange?.originalCode || '',
+  })
 
   const handleEditorDidMount = (editorInstance: editor.IStandaloneCodeEditor, monaco: Monaco) => {
     editorRef.current = editorInstance
@@ -233,6 +349,8 @@ export function CodeEditor() {
           } : undefined}
         />
       )}
+
+      {/* Inline Diff is now shown directly in the editor via decorations */}
     </div>
   )
 }
