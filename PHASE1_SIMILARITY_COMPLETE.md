@@ -195,6 +195,211 @@ Same family (Nature ≡ Nature Medicine): 0.7
 Different (Nature ≡ Science):           0.0
 ```
 
+  🧠 Semantic Similarity Logic
+
+  The citation network uses a multi-dimensional similarity score to determine how related two
+  papers are. Think of it as answering: "How closely related are these two papers in the research
+   landscape?"
+
+  1. Citation Relationships (35% weight) - MOST IMPORTANT
+
+  Logic: Papers that cite each other or cite the same papers are likely studying related 
+  problems.
+
+  How it works:
+  If Paper A cites Paper B → High similarity
+  If Paper A and Paper B both cite Paper C → Medium similarity
+  If Paper A's citations overlap with Paper B's citations → Score based on overlap percentage
+
+  Why 35%? Citation relationships are the strongest signal of research relevance:
+  - Direct citations mean one paper built upon another
+  - Shared citations indicate both papers rely on the same foundational work
+  - This is the most objective measure (not subjective like keywords)
+
+  Example:
+  Paper A: "CRISPR gene editing in cancer"
+  Paper B: "Using CRISPR to target oncogenes"
+  → Both cite the original CRISPR papers (Doudna, Charpentier)
+  → Both cite cancer genomics papers
+  → High citation overlap = High similarity
+
+  ---
+  2. Topic/Field-of-Study Overlap (25% weight) - SECOND MOST IMPORTANT
+
+  Logic: Papers studying the same topics are related, even if they don't directly cite each 
+  other.
+
+  How it works:
+  Semantic Scholar provides topics like:
+  - "CRISPR", "Gene Editing", "Cancer", "Immunotherapy"
+
+  Calculate Jaccard similarity:
+  Overlap Score = (Shared Topics) / (Total Unique Topics)
+
+  Why 25%? Topics capture conceptual similarity beyond citations:
+  - New papers haven't been cited yet but might be highly relevant
+  - Papers in different sub-fields (e.g., computational vs. experimental) might not cite each
+  other but share topics
+  - Balances with citation weight
+
+  Example:
+  Paper A topics: ["CRISPR", "Gene Editing", "Cancer", "Therapeutics"]
+  Paper B topics: ["CRISPR", "Gene Therapy", "Cancer", "Clinical Trials"]
+  → Shared: ["CRISPR", "Cancer"] = 2
+  → Total unique: ["CRISPR", "Gene Editing", "Cancer", "Therapeutics", "Gene Therapy", "Clinical
+  Trials"] = 6
+  → Jaccard similarity = 2/6 = 0.33
+
+  ---
+  3. Temporal Proximity (15% weight)
+
+  Logic: Papers published around the same time are likely responding to the same research trends 
+  and challenges.
+
+  How it works:
+  Calculate year difference:
+  Score = 1 - (|Year_A - Year_B| / MAX_YEAR_DIFF)
+
+  Where MAX_YEAR_DIFF = 10 years (configurable)
+
+  Examples:
+  - Same year (2023-2023): Score = 1.0
+  - 2 years apart (2023-2021): Score = 0.8
+  - 5 years apart (2023-2018): Score = 0.5
+  - 10+ years apart (2023-2010): Score = 0.0
+
+  Why 15%? Temporal context matters but isn't primary:
+  - Recent papers are more likely to be relevant to current research
+  - Historical papers are still valuable (foundational work)
+  - Prevents over-weighting recency bias
+  - Helps identify contemporary conversations in the field
+
+  Example:
+  Paper A (2023): "CRISPR base editing for sickle cell disease"
+  Paper B (2022): "Clinical trials of CRISPR therapy"
+  → 1 year apart → High temporal score
+  → Both responding to recent CRISPR clinical advances
+
+  ---
+  4. Author Overlap (15% weight)
+
+  Logic: Papers by the same authors or research groups are likely related.
+
+  How it works:
+  Calculate author overlap using Jaccard similarity:
+  Score = (Shared Authors) / (Total Unique Authors)
+
+  Also consider:
+  - Last author overlap (PI/senior author) → bonus weight
+  - First author overlap → bonus weight
+
+  Why 15%? Authors signal research continuity:
+  - Scientists often work on related problems over time
+  - Research groups have coherent research programs
+  - However, not too high because:
+    - Prolific authors work on diverse topics
+    - Collaborations can span different fields
+    - New researchers might study same topics with different teams
+
+  Example:
+  Paper A authors: ["Jennifer Doudna", "Samuel Sternberg", "Martin Jinek"]
+  Paper B authors: ["Jennifer Doudna", "Alexandra East", "Gavin Knott"]
+  → Shared: ["Jennifer Doudna"] = 1
+  → Total unique: 5
+  → Basic score = 1/5 = 0.2
+  → Bonus: Same last author (Doudna is PI) → Score increases to ~0.4
+
+  ---
+  5. Venue Similarity (10% weight) - LEAST WEIGHT
+
+  Logic: Papers published in the same journal or journal family are somewhat related.
+
+  How it works:
+  Same exact journal (e.g., both in "Nature"): Score = 1.0
+  Same journal family (e.g., "Nature" & "Nature Methods"): Score = 0.7
+  Different families: Score = 0.0
+
+  Journal families:
+  - Nature family (Nature, Nature Methods, Nature Biotechnology...)
+  - Science family (Science, Science Translational Medicine...)
+  - Cell family (Cell, Cell Stem Cell, Molecular Cell...)
+
+  Why only 10%? Venue is a weak signal:
+  - Top journals (Nature, Science, Cell) publish extremely diverse topics
+  - A paper in Nature Immunology and one in Nature Physics are not related
+  - Venue prestige ≠ topical relevance
+  - However, specialized journals (e.g., "Journal of CRISPR Technology") do signal focus
+  - Our intelligent journal filtering uses this dimension
+
+  Example:
+  Paper A: Published in "Nature Methods"
+  Paper B: Published in "Nature Biotechnology"
+  → Both in Nature family → Score = 0.7
+
+  Paper C: Published in "Cell"
+  → Different family → Score = 0.0
+
+  ---
+  🎯 Final Similarity Score Calculation
+
+  totalSimilarity =
+    (citationSimilarity × 0.35) +
+    (topicSimilarity × 0.25) +
+    (temporalProximity × 0.15) +
+    (authorOverlap × 0.15) +
+    (venueSimilarity × 0.10)
+
+  Range: 0.0 (completely unrelated) to 1.0 (highly related)
+
+  Example Calculation:
+
+  Paper A: "CRISPR clinical trial for sickle cell 2023"
+  Paper B: "Base editing therapy for beta-thalassemia 2022"
+
+  1. Citation Similarity = 0.6 (many shared citations to CRISPR & gene therapy papers)
+  2. Topic Similarity = 0.7 (both: CRISPR, gene therapy, blood disorders, clinical)
+  3. Temporal Proximity = 0.9 (only 1 year apart: 1 - 1/10 = 0.9)
+  4. Author Overlap = 0.2 (some shared collaborators)
+  5. Venue Similarity = 0.7 (both in medical journals - NEJM family)
+
+  Final Score:
+  = (0.6 × 0.35) + (0.7 × 0.25) + (0.9 × 0.15) + (0.2 × 0.15) + (0.7 × 0.10)
+  = 0.21 + 0.175 + 0.135 + 0.03 + 0.07
+  = 0.62 (62% similar) → Highly related papers!
+
+  ---
+  🎨 Visualization in BioCopilot
+
+  The similarity score determines:
+
+  1. Node Color (Blue Gradient):
+    - Dark blue (similarity 0.8-1.0) = Highly related
+    - Medium blue (similarity 0.5-0.8) = Moderately related
+    - Light blue (similarity 0.2-0.5) = Somewhat related
+    - Pale blue (similarity 0.0-0.2) = Weakly related
+  2. Edge Color:
+    - Orange edges = High semantic similarity (>0.5)
+    - Gray edges = Citation relationship only
+  3. Edge Length:
+    - Shorter edges = More similar papers (pulled together by physics)
+    - Longer edges = Less similar papers (pushed apart)
+
+  ---
+  💡 Why These Weights Work
+
+  Citations (35%) + Topics (25%) = 60% of score→ Core academic relevance
+
+  Temporal (15%) + Authors (15%) = 30% of score→ Research context and continuity
+
+  Venue (10%) = 10% of score→ Weak signal, mainly for specialized journals
+
+  This balance ensures:
+  - ✅ Objective measures (citations, topics) dominate
+  - ✅ Context (time, authors) provides nuance
+  - ✅ Venue doesn't overpower (Nature publishes everything!)
+  - ✅ New papers (no citations yet) can still be highly ranked via topics/authors/time
+
+
 ---
 
 ## 🎨 Similarity Score Interpretation
