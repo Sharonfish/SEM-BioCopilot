@@ -26,6 +26,16 @@ export function useInlineEditorDiff({
   const decorationsRef = useRef<string[]>([])
   const viewZonesRef = useRef<string[]>([])
   const overlayWidgetsRef = useRef<editor.IOverlayWidget[]>([])
+  const scrollListenerRef = useRef<any>(null)
+
+  // Function to update widget positions
+  const updateWidgetPositions = () => {
+    overlayWidgetsRef.current.forEach(widget => {
+      if (editorInstance) {
+        editorInstance.layoutOverlayWidget(widget)
+      }
+    })
+  }
 
   useEffect(() => {
     if (!editorInstance || hunks.length === 0) {
@@ -179,8 +189,26 @@ export function useInlineEditorDiff({
     // Apply decorations
     decorationsRef.current = editorInstance.deltaDecorations([], newDecorations)
 
+    // Add scroll listener to update button positions
+    if (scrollListenerRef.current) {
+      scrollListenerRef.current.dispose()
+    }
+    scrollListenerRef.current = editorInstance.onDidScrollChange(() => {
+      updateWidgetPositions()
+    })
+
+    // Also update on layout changes
+    const layoutDisposable = editorInstance.onDidLayoutChange(() => {
+      updateWidgetPositions()
+    })
+
     // Cleanup
     return () => {
+      if (scrollListenerRef.current) {
+        scrollListenerRef.current.dispose()
+        scrollListenerRef.current = null
+      }
+      layoutDisposable.dispose()
       if (decorationsRef.current.length > 0) {
         decorationsRef.current = editorInstance?.deltaDecorations(decorationsRef.current, []) || []
       }
@@ -296,23 +324,42 @@ function createButtonOverlayWidget(
   domNode.appendChild(acceptBtn)
   domNode.appendChild(rejectBtn)
 
+  // Update position function
+  const updatePosition = () => {
+    try {
+      const layoutInfo = editorInstance.getLayoutInfo()
+      const lineTop = editorInstance.getTopForLineNumber(lineNumber)
+      const scrollTop = editorInstance.getScrollTop()
+      
+      // Position the buttons to the right of the line
+      const top = lineTop - scrollTop + 2
+      const left = layoutInfo.contentWidth - 160
+      
+      domNode.style.top = `${top}px`
+      domNode.style.left = `${left}px`
+      
+      // Hide if out of view
+      const editorHeight = layoutInfo.height
+      if (top < 0 || top > editorHeight) {
+        domNode.style.display = 'none'
+      } else {
+        domNode.style.display = 'flex'
+      }
+    } catch (e) {
+      // Line might not exist anymore
+      domNode.style.display = 'none'
+    }
+  }
+
+  // Initial position
+  updatePosition()
+
   return {
     getId: () => `inline-diff-buttons-${hunkId}`,
     getDomNode: () => domNode,
     getPosition: () => {
-      try {
-        const layoutInfo = editorInstance.getLayoutInfo()
-        const lineTop = editorInstance.getTopForLineNumber(lineNumber)
-        const scrollTop = editorInstance.getScrollTop()
-        
-        // Position the buttons to the right of the line
-        domNode.style.top = `${lineTop - scrollTop + 2}px`
-        domNode.style.left = `${layoutInfo.contentWidth - 160}px`
-        
-        return null
-      } catch (e) {
-        return null
-      }
+      updatePosition()
+      return null
     },
   }
 }

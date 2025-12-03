@@ -11,8 +11,9 @@
 
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
-import { ZoomIn, ZoomOut, Maximize2, Filter } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Filter, ChevronDown, ChevronRight } from 'lucide-react';
 import type { NetworkGraph } from '@/types/citationNetwork';
+import { JOURNAL_FAMILIES, findJournalFamily, getJournalFamiliesFromVenues } from '@/src/data/journalFamilies';
 
 // ============================================================================
 // Types
@@ -116,6 +117,7 @@ export function ForceGraphVisualization({
   const [linkDistance, setLinkDistance] = useState(9000);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [selectedVenues, setSelectedVenues] = useState<Set<string>>(new Set());
+  const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(new Set());
 
   // Extract unique venues from the graph
   const uniqueVenues = useMemo(() => {
@@ -128,6 +130,41 @@ export function ForceGraphVisualization({
     return Array.from(venues).sort();
   }, [graph]);
 
+  // Group venues by journal family
+  const groupedVenues = useMemo(() => {
+    const familyMap = new Map<string, {
+      family: typeof JOURNAL_FAMILIES[0];
+      venues: string[];
+      totalCount: number;
+    }>();
+    const ungroupedVenues: string[] = [];
+
+    uniqueVenues.forEach(venue => {
+      const family = findJournalFamily(venue);
+      if (family) {
+        if (!familyMap.has(family.id)) {
+          familyMap.set(family.id, {
+            family,
+            venues: [],
+            totalCount: 0,
+          });
+        }
+        const group = familyMap.get(family.id)!;
+        group.venues.push(venue);
+        // Count papers in this venue
+        const count = graph.nodes.filter(n => n.paper?.venue === venue).length;
+        group.totalCount += count;
+      } else {
+        ungroupedVenues.push(venue);
+      }
+    });
+
+    // Sort families by total count (descending)
+    const sortedFamilies = Array.from(familyMap.values()).sort((a, b) => b.totalCount - a.totalCount);
+
+    return { families: sortedFamilies, ungrouped: ungroupedVenues };
+  }, [uniqueVenues, graph]);
+
   // Toggle venue selection
   const toggleVenue = useCallback((venue: string) => {
     setSelectedVenues(prev => {
@@ -136,6 +173,36 @@ export function ForceGraphVisualization({
         newSet.delete(venue);
       } else {
         newSet.add(venue);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // Toggle entire family selection
+  const toggleFamily = useCallback((familyVenues: string[]) => {
+    setSelectedVenues(prev => {
+      const newSet = new Set(prev);
+      const allSelected = familyVenues.every(v => newSet.has(v));
+
+      if (allSelected) {
+        // Deselect all venues in family
+        familyVenues.forEach(v => newSet.delete(v));
+      } else {
+        // Select all venues in family
+        familyVenues.forEach(v => newSet.add(v));
+      }
+      return newSet;
+    });
+  }, []);
+
+  // Toggle family expansion
+  const toggleExpanded = useCallback((familyId: string) => {
+    setExpandedFamilies(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(familyId)) {
+        newSet.delete(familyId);
+      } else {
+        newSet.add(familyId);
       }
       return newSet;
     });
@@ -411,93 +478,295 @@ export function ForceGraphVisualization({
         </button>
       </div>
 
-      {/* Filter Dropdown */}
+      {/* Improved Filter Dropdown with Journal Families */}
       {showFilterDropdown && (
         <div
           className="filter-dropdown"
           style={{
-            position: 'absolute',
-            top: '20px',
-            left: '80px',
+            position: 'fixed',
+            top: '80px',
+            left: '360px',
             background: 'white',
             border: '1px solid #ddd',
-            borderRadius: '6px',
-            padding: '10px',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-            maxHeight: '350px',
+            borderRadius: '8px',
+            padding: '12px',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
+            maxHeight: 'calc(100vh - 120px)',
             overflowY: 'auto',
-            minWidth: '200px',
-            maxWidth: '220px',
+            width: '320px',
             zIndex: 1000,
           }}
         >
-          <div style={{ fontWeight: '600', marginBottom: '10px', fontSize: '12px', color: '#333' }}>
-            Filter by Source
-          </div>
-          {uniqueVenues.length === 0 ? (
-            <div style={{ fontSize: '11px', color: '#999' }}>No venues available</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {uniqueVenues.map((venue) => (
-                <label
-                  key={venue}
+          {/* Header */}
+          <div style={{
+            fontWeight: '600',
+            marginBottom: '12px',
+            fontSize: '13px',
+            color: '#333',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+            <span>Filter by Journal</span>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {selectedVenues.size > 0 && (
+                <button
+                  onClick={() => setSelectedVenues(new Set())}
                   style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '6px',
-                    fontSize: '11px',
+                    padding: '4px 8px',
+                    background: '#f5f5f5',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    fontSize: '10px',
                     cursor: 'pointer',
-                    padding: '3px',
-                    borderRadius: '3px',
-                    transition: 'background 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#f5f5f5';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
+                    color: '#666',
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={selectedVenues.has(venue)}
-                    onChange={() => toggleVenue(venue)}
-                    style={{
-                      width: '14px',
-                      height: '14px',
-                      cursor: 'pointer',
-                      flexShrink: 0,
-                      marginTop: '1px',
-                    }}
-                  />
-                  <span style={{ lineHeight: '1.3', wordBreak: 'break-word' }}>{venue}</span>
-                </label>
-              ))}
+                  Clear ({selectedVenues.size})
+                </button>
+              )}
+              <button
+                onClick={() => setShowFilterDropdown(false)}
+                style={{
+                  padding: '4px 6px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  color: '#666',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  lineHeight: '1',
+                }}
+                title="Close filter"
+                aria-label="Close filter"
+              >
+                ×
+              </button>
             </div>
-          )}
-          {selectedVenues.size > 0 && (
-            <button
-              onClick={() => setSelectedVenues(new Set())}
-              style={{
-                marginTop: '10px',
-                padding: '5px 10px',
-                width: '100%',
-                background: '#f5f5f5',
-                border: '1px solid #ddd',
-                borderRadius: '3px',
-                fontSize: '11px',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#e0e0e0';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#f5f5f5';
-              }}
-            >
-              Clear All ({selectedVenues.size})
-            </button>
+          </div>
+
+          {uniqueVenues.length === 0 ? (
+            <div style={{ fontSize: '12px', color: '#999', padding: '8px' }}>
+              No venues available
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {/* Journal Families */}
+              {groupedVenues.families.map(({ family, venues, totalCount }) => {
+                const isExpanded = expandedFamilies.has(family.id);
+                const allSelected = venues.every(v => selectedVenues.has(v));
+                const someSelected = venues.some(v => selectedVenues.has(v)) && !allSelected;
+
+                return (
+                  <div
+                    key={family.id}
+                    style={{
+                      border: '1px solid #e5e5e5',
+                      borderRadius: '6px',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {/* Family Header */}
+                    <div
+                      style={{
+                        padding: '8px 10px',
+                        background: allSelected ? '#e3f2fd' : (someSelected ? '#f5f5f5' : 'white'),
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        cursor: 'pointer',
+                        transition: 'background 0.2s',
+                        borderBottom: isExpanded ? '1px solid #e5e5e5' : 'none',
+                      }}
+                    >
+                      {/* Expand/Collapse Icon */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleExpanded(family.id);
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: '2px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          color: '#666',
+                        }}
+                      >
+                        {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </button>
+
+                      {/* Family Checkbox */}
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        ref={(input) => {
+                          if (input) {
+                            input.indeterminate = someSelected;
+                          }
+                        }}
+                        onChange={() => toggleFamily(venues)}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          width: '16px',
+                          height: '16px',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                      />
+
+                      {/* Family Info */}
+                      <div
+                        style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}
+                        onClick={() => toggleExpanded(family.id)}
+                      >
+                        {/* Icon */}
+                        <span style={{ fontSize: '16px' }}>{family.icon}</span>
+
+                        {/* Name and Impact Factor */}
+                        <div style={{ flex: 1 }}>
+                          <div style={{
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            color: family.color,
+                          }}>
+                            {family.displayName}
+                          </div>
+                          <div style={{ fontSize: '10px', color: '#999' }}>
+                            IF: {family.impactFactor}
+                          </div>
+                        </div>
+
+                        {/* Paper Count Badge */}
+                        <div style={{
+                          background: '#f0f0f0',
+                          padding: '2px 6px',
+                          borderRadius: '10px',
+                          fontSize: '10px',
+                          fontWeight: '600',
+                          color: '#666',
+                        }}>
+                          {totalCount}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Expanded Venues List */}
+                    {isExpanded && venues.length > 1 && (
+                      <div style={{
+                        padding: '6px 10px 6px 46px',
+                        background: '#fafafa',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                      }}>
+                        {venues.map(venue => {
+                          const venueCount = graph.nodes.filter(n => n.paper?.venue === venue).length;
+                          return (
+                            <label
+                              key={venue}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                fontSize: '11px',
+                                cursor: 'pointer',
+                                padding: '4px',
+                                borderRadius: '3px',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedVenues.has(venue)}
+                                onChange={() => toggleVenue(venue)}
+                                style={{
+                                  width: '14px',
+                                  height: '14px',
+                                  cursor: 'pointer',
+                                  flexShrink: 0,
+                                }}
+                              />
+                              <span style={{ flex: 1, lineHeight: '1.3', color: '#555' }}>
+                                {venue}
+                              </span>
+                              <span style={{
+                                fontSize: '10px',
+                                color: '#999',
+                                fontWeight: '500',
+                              }}>
+                                {venueCount}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Ungrouped Venues */}
+              {groupedVenues.ungrouped.length > 0 && (
+                <div style={{
+                  marginTop: '8px',
+                  paddingTop: '8px',
+                  borderTop: '1px solid #e5e5e5',
+                }}>
+                  <div style={{
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    color: '#999',
+                    marginBottom: '6px',
+                  }}>
+                    Other Journals
+                  </div>
+                  {groupedVenues.ungrouped.map(venue => {
+                    const venueCount = graph.nodes.filter(n => n.paper?.venue === venue).length;
+                    return (
+                      <label
+                        key={venue}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          fontSize: '11px',
+                          cursor: 'pointer',
+                          padding: '4px',
+                          borderRadius: '3px',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedVenues.has(venue)}
+                          onChange={() => toggleVenue(venue)}
+                          style={{
+                            width: '14px',
+                            height: '14px',
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span style={{ flex: 1, lineHeight: '1.3', color: '#555' }}>
+                          {venue}
+                        </span>
+                        <span style={{
+                          fontSize: '10px',
+                          color: '#999',
+                          fontWeight: '500',
+                        }}>
+                          {venueCount}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
